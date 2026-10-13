@@ -1,0 +1,13 @@
+[package]
+name = "grocery-core"
+description = "Recipe parsing, ingredient resolution and shopping list aggregation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cooklang.workspace = true
+serde.workspace = true
+serde_norway.workspace = true
+thiserror.workspace = true

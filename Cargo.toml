@@ -1,0 +1,25 @@
+[workspace]
+resolver = "2"
+members = ["crates/grocery-core", "crates/grocery-store", "crates/grocery-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+rust-version = "1.80"
+
+[workspace.dependencies]
+# Skip the bundled units (we normalize units ourselves); `aisle` is required
+# because cooklang 0.19 doesn't compile without it.
+cooklang = { version = "0.19", default-features = false, features = ["aisle"] }
+serde = { version = "1", features = ["derive"] }
+serde_norway = "0.9"
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4.5", features = ["derive", "env"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+grocery-core = { path = "crates/grocery-core" }
+grocery-store = { path = "crates/grocery-store" }
+# `bundled` compiles SQLite in: no system libsqlite3 needed on the Pi.
+rusqlite = { version = "0.40", features = ["bundled"] }
+csv = "1.4"

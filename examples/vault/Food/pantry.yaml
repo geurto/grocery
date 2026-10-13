@@ -1,0 +1,5 @@
+# Staples that are always in the house. They never end up on a list.
+# Names resolve through aliases.yaml, so "zout" here also covers "salt".
+- salt
+- black pepper
+- chili flakes

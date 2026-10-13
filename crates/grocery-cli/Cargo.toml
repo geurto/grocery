@@ -1,0 +1,21 @@
+[package]
+name = "grocery-cli"
+description = "Command-line front end: build shopping lists from a recipe vault"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "grocery"
+path = "src/main.rs"
+
+[dependencies]
+grocery-core.workspace = true
+grocery-store.workspace = true
+anyhow.workspace = true
+clap.workspace = true
+chrono.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"

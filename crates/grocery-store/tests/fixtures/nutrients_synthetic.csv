@@ -1,0 +1,8 @@
+"Voedingsstofgroep"|"Component group"|"Nutrient-code"|"Voedingsstof"|"Component"|"Eenheid/Unit"
+x|Energy and macronutrients|ENERCJ| Energie kJ| Energy kJ |kJ
+x|Energy and macronutrients|ENERCC| Energie kcal | Energy kcal |kcal
+x|Energy and macronutrients|PROT| Eiwit totaal| Protein total|g
+x|Protein|PROT| Eiwit totaal| Protein total|g
+x|Energy and macronutrients|FAT| Vet totaal| Fat total|g
+x|Ash|NA| Natrium| Sodium|mg
+x|Vitamins water soluble|VITC| Ascorbinezuur (Vit C)| Ascorbic acid (Vit C)|mg
