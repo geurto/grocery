@@ -104,3 +104,23 @@ foods:
     sugars: 1.8
     fibre: 0.0
     salt: 1.9
+  protein powder:
+    source: package
+    energy_kcal: 402.0
+    protein: 78.0
+    fat: 8.0
+    saturated_fat: 2.0
+    carbohydrate: 3.2
+    sugars: 0.2
+    fibre: 2.8
+    salt: 4.6
+  granola:
+    source: package (Holie's crunchy muesli)
+    energy_kcal: 406.0
+    protein: 11.0
+    fat: 13.0
+    saturated_fat: 2.9
+    carbohydrate: 51.0
+    sugars: 2.1
+    fibre: 22.0
+    salt: 0.01

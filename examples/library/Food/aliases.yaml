@@ -87,7 +87,7 @@ foods:
   spinach:
     nevo: 51
     aisle: groente & fruit
-    synonyms: [spinazie, rauwe spinazie]
+    synonyms: [spinazie, rauwe spinazie, babyspinazie]
   cabbage, pointed:
     nevo: 53
     aisle: groente & fruit
@@ -162,6 +162,22 @@ foods:
     nevo: 158
     aisle: groente & fruit
     synonyms: [citroen]
+  banana:
+    nevo: 151
+    aisle: groente & fruit
+    synonyms: [banaan, bananen]
+  strawberries:
+    nevo: 148
+    aisle: groente & fruit
+    synonyms: [aardbeien]
+  blueberries:
+    nevo: 152
+    aisle: groente & fruit
+    synonyms: [blauwe bessen, bosbessen]
+  raspberries:
+    nevo: 161
+    aisle: groente & fruit
+    synonyms: [frambozen]
 
   ### vlees & vis ###
   smoked sausage:
@@ -189,6 +205,14 @@ foods:
     nevo: 2503
     aisle: zuivel & eieren
     synonyms: [volle griekse yoghurt, griekse yoghurt]
+  coconut yoghurt:
+    nevo: 5545
+    aisle: zuivel & eieren
+    synonyms: [kokoskwark, kokosyoghurt]
+  soy yoghurt:
+    nevo: 5247
+    aisle: zuivel & eieren
+    synonyms: [sojayoghurt, plantaardige griekse yoghurt]
 
   ### kaas ###
   feta:
@@ -318,6 +342,11 @@ foods:
     negligible: true
     aisle: kruiden & specerijen
     synonyms: [korianderpoeder, gemalen koriander, koriander]
+  cinnamon powder:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [kaneel, kaneelpoeder]
+
   chili flakes:
     nevo: 1221          # Chilipoeder (closest match)
     density: 0.4
@@ -360,6 +389,21 @@ foods:
     synonyms: [tacokruiden, taco kruidenmix]
 
   ### ontbijt & bakproducten ###
+  granola:
+    custom: granola
+    aisle: ontbijt & bakproducten
+  chia seeds:
+    nevo: 3447
+    aisle: ontbijt & bakproducten
+    synonyms: [chiazaad]
+  flax seed:
+    nevo: 867
+    aisle: ontbijt & bakproducten
+    synonyms: [lijnzaad]
+  oat flakes:
+    nevo: 213
+    aisle: ontbijt & bakproducten
+    synonyms: [havervlokken]
   peanut butter:
     nevo: 455
     aisle: ontbijt & bakproducten
@@ -368,6 +412,22 @@ foods:
     custom: coconut sugar
     aisle: ontbijt & bakproducten
     synonyms: [kokossuiker, kokosbloesemsuiker]
+  cocoa powder:
+    nevo: 430
+    aisle: ontbijt & bakproducten
+    synonyms: [rauwe cacao, cacaopoeder]
+  protein powder:
+    custom: protein powder
+    aisle: ontbijt & bakproducten
+    synonyms: [eiwitpoeder, proteïnepoeder]
+  almond drink:
+    nevo: 5464
+    aisle: ontbijt & bakproducten
+    synonyms: [amandelmelk, almond milk]
+  coconut water:
+    nevo: 3359
+    aisle: ontbijt & bakproducten
+    synonyms: [kokoswater]
 
   ### olie & azijn ###
   olive oil:
