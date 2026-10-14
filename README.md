@@ -1,21 +1,27 @@
 # grocery
 
 Shopping lists, recipe exports and nutrition estimates from a library of
-[Cooklang](https://cooklang.org) recipes, as a CLI and a small web service.
+[Cooklang](https://cooklang.org) recipes: a CLI, a small web service, and a
+phone app (PWA) for shopping together, with or without signal.
 
 ```
 crates/
   grocery-core/    parse → resolve → aggregate → render, and nutrition (pure)
   grocery-store/   SQLite: NEVO data, recipe index, saved shopping lists
-  grocery-server/  Axum service: watches Recipes/, JSON API, md/txt exports
+  grocery-server/  Axum service: watches Recipes/, JSON API, live events,
+                   md/txt exports, and serves the web app
   grocery-cli/     the `grocery` binary (including `grocery serve`)
+web/               the web app: Svelte 5 + TypeScript, built with Vite
 examples/library/  a small library to try it on (also used by the tests)
 ```
 
 ## Quick start
 
+`nix develop` gives you Rust, Node and sqlite3 (see `flake.nix`).
+
 ```sh
 cargo test --workspace
+(cd web && npm ci && npm test)
 export GROCERY_LIBRARY=examples/library        # or pass --library
 cargo run -q -- check
 cargo run -q -- list "Pasta arrabbiata=2" Shakshuka            # Markdown
@@ -76,6 +82,7 @@ There is **no authentication**. Keep it on localhost or a private network
 
 ```
 GET    /api/status
+GET    /api/events                            server-sent events (below)
 POST   /api/reindex                           re-parse every recipe
 GET    /api/recipes?q=boerenkool              search title, tags, ingredients
 GET    /api/recipes/{path}?format=&servings=  one recipe (JSON), or md/txt export
@@ -105,6 +112,11 @@ curl -s 'localhost:8080/api/recipes/Shakshuka.cook?format=md&servings=4'
 A saved list is a snapshot: editing a recipe later doesn't change a list
 you're shopping from. Make a new list to pick up the change.
 
+`/api/events` streams `{"type":"list","id":3}` whenever a list is created,
+changed or deleted, and `{"type":"recipes"}` when the index changes. Events
+carry no data: clients refetch what they show. `{"type":"resync"}` means a
+client fell behind and should refetch everything.
+
 ### Running it on the server
 
 A systemd unit, for example (`/etc/systemd/system/grocery.service`):
@@ -122,6 +134,63 @@ WantedBy=multi-user.target
 ```
 
 It stops cleanly on SIGTERM.
+
+## Web app
+
+`grocery serve` also serves the app at `/`. It's built into the binary:
+
+```sh
+cd web && npm ci && npm run build      # → web/dist
+cargo build --release                  # embeds web/dist
+```
+
+A release build without `web/dist` still compiles and runs, but shows a
+"not built" page at `/`. Debug builds read `web/dist` from disk, so a new
+`npm run build` shows up without recompiling.
+
+What it does:
+
+- **Lists overview**: open lists with progress; done lists folded away.
+- **Shopping**: items grouped by aisle in walking order. Tap to tick;
+  ticked items sink to the bottom of their aisle (or hide them). Add items
+  by hand. Share what's left (share sheet, or clipboard), copy as Markdown,
+  keep the screen on, mark done, rename, delete.
+- **New list**: search recipes by title, tag or ingredient, set servings,
+  and make the list.
+- **Recipe**: scaled ingredients, method, and nutrition per serving.
+
+**Shopping together.** Both phones stay connected to `/api/events`, so a
+tick on one shows on the other within a second. Ticks set "checked" or
+"unchecked" rather than toggling, so when you both tap the same item, the
+last tap wins and nothing flips back unexpectedly.
+
+**Without signal.** Every change is saved on the phone first and shown at
+once, then sent in order when the server can be reached (on reconnect, when
+the app comes back to the foreground, and every 15 s). The header shows
+*Live*, *Offline* or *N to sync*. Items added offline get their real id once
+sent, and ticks made on them in the meantime follow. Lists, recipes you've
+opened and the app itself are cached, so the app also opens offline. Making
+a new list, renaming, deleting and nutrition need the server.
+
+**HTTPS is required** for the offline part and for installing to the home
+screen: browsers only allow service workers on HTTPS (or `localhost`). Over
+plain HTTP everything else works, but the app won't open without a
+connection. With Tailscale, `tailscale serve --bg 8080` puts the service on
+`https://<machine>.<tailnet>.ts.net` with a valid certificate, reachable
+only from your tailnet. Then open that URL on each phone and choose "Add to
+Home Screen" (iOS: Share menu; Android: browser menu).
+
+### Developing the app
+
+```sh
+cargo run -- --library examples/library serve   # API on :8080
+cd web && npm run dev                           # app on :5173, /api proxied
+npm test          # vitest: offline sync, formatting, routes
+npm run check     # svelte-check (types)
+```
+
+The service worker only registers in production builds, so `npm run dev`
+always runs fresh code.
 
 ## Database
 
@@ -239,7 +308,7 @@ the real export is only read by an ignored test
   is recovered from the text value, and a spurious "unnecessary scaling
   lock" warning is filtered. Revisit when upgrading the crate.
 
-## Next steps
+## Ideas
 
-- **Step 5:** PWA for checking items off, served by `grocery serve` and
-  built on the API above.
+- Reordering aisles from the app (they come from `aliases.yaml` now).
+- A "frequently added" suggestion list for hand-added items.

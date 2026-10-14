@@ -324,3 +324,101 @@ async fn nutrition_needs_nevo() {
         "{err}"
     );
 }
+
+/// Read the next `data:` line from an SSE body, or panic after a second.
+async fn next_event(body: &mut Body) -> Value {
+    loop {
+        let frame = tokio::time::timeout(std::time::Duration::from_secs(1), body.frame())
+            .await
+            .expect("an event within a second")
+            .expect("stream still open")
+            .unwrap();
+        let Ok(data) = frame.into_data() else {
+            continue;
+        };
+        let text = String::from_utf8(data.to_vec()).unwrap();
+        if let Some(json) = text.lines().find_map(|l| l.strip_prefix("data: ")) {
+            return serde_json::from_str(json).unwrap();
+        }
+    }
+}
+
+#[tokio::test]
+async fn changes_are_pushed_as_events() {
+    let f = Fixture::new();
+    let resp = f
+        .router()
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(resp.headers()[header::CONTENT_TYPE], "text/event-stream");
+    let mut events = resp.into_body();
+
+    let (_, created) = f
+        .json(
+            Method::POST,
+            "/api/lists",
+            Some(json!({ "recipes": [{ "path": "Shakshuka.cook" }] })),
+        )
+        .await;
+    let id = created["id"].as_i64().unwrap();
+    assert_eq!(
+        next_event(&mut events).await,
+        json!({ "type": "list", "id": id })
+    );
+
+    let item = created["items"][0]["id"].as_i64().unwrap();
+    f.json(
+        Method::PATCH,
+        &format!("/api/lists/{id}/items/{item}"),
+        Some(json!({ "checked": true })),
+    )
+    .await;
+    assert_eq!(
+        next_event(&mut events).await,
+        json!({ "type": "list", "id": id })
+    );
+
+    std::fs::write(
+        f.app.library.recipes_dir().join("New.cook"),
+        "Boil @water{1%l}.",
+    )
+    .unwrap();
+    f.app.sync(false).unwrap();
+    assert_eq!(next_event(&mut events).await, json!({ "type": "recipes" }));
+}
+
+#[tokio::test]
+async fn recipe_json_has_a_display_version() {
+    let f = Fixture::new();
+    let (_, r) = f
+        .json(Method::GET, "/api/recipes/Shakshuka.cook?servings=4", None)
+        .await;
+    let display = &r["display"];
+    assert_eq!(display["info"], "Serves 4 (recipe: 2) · eggs, vegetarian");
+    assert!(display["ingredients"]
+        .as_array()
+        .unwrap()
+        .contains(&json!("passata — 1000 g")));
+    assert_eq!(display["sections"][0]["steps"][0]["type"], "step");
+    assert!(display["sections"][0]["steps"][0]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("Fry ui, knoflook"));
+
+    // The list endpoint stays light.
+    let (_, all) = f.json(Method::GET, "/api/recipes", None).await;
+    assert!(all[0].get("display").is_none());
+}
+
+#[tokio::test]
+async fn unknown_api_routes_are_json_404s() {
+    let f = Fixture::new();
+    let (status, body) = f.json(Method::GET, "/api/nope", None).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert!(body["error"].is_string());
+    // Whether or not web/dist is built, `/` answers with HTML.
+    let (_, ctype, _) = f.call(Method::GET, "/", None).await;
+    assert!(ctype.starts_with("text/html"), "{ctype}");
+}

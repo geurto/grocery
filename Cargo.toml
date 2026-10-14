@@ -30,3 +30,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal
 # Coalesces the burst of events an editor save produces into one rescan.
 notify-debouncer-mini = "0.7"
 tempfile = "3"
+tokio-stream = { version = "0.1", features = ["sync"] }
+# The built web app (web/dist) is compiled into the binary. In debug builds
+# it's read from disk instead, so `npm run build` shows up without a rebuild.
+rust-embed = { version = "8", features = ["mime-guess"] }

@@ -3,12 +3,14 @@
 //! Keeps the recipe index in SQLite up to date with the `.cook` files (a
 //! rescan at startup, then on every change under `Recipes/`), stores
 //! shopping lists, and serves both as JSON plus Markdown/plain-text exports.
-//! See [`api`] for the routes.
+//! See [`api`] for the routes. Changes are pushed to open clients as
+//! server-sent events ([`Event`]), and [`web`] serves the web app.
 //!
 //! The service has no authentication: bind it to localhost or a private
 //! network (Tailscale, WireGuard), or put an authenticating proxy in front.
 
 pub mod api;
+pub mod web;
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -19,18 +21,46 @@ use anyhow::{Context, Result};
 use grocery_core::library::Library;
 use grocery_store::{Store, SyncReport};
 use notify_debouncer_mini::notify::RecursiveMode;
+use serde::Serialize;
+use tokio::sync::broadcast;
+
+/// Something changed; clients showing it should fetch it again.
+///
+/// Events carry no data on purpose: refetching is simple, and it's always
+/// right, even for a client that missed events while it was offline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+pub enum Event {
+    /// A list was created, changed or deleted.
+    List { id: i64 },
+    /// The recipe index changed.
+    Recipes,
+}
 
 pub struct App {
     pub library: Library,
     store: Mutex<Store>,
+    events: broadcast::Sender<Event>,
 }
 
 impl App {
     pub fn new(library: Library, store: Store) -> Arc<Self> {
+        // Subscribers that fall this far behind get a "resync" instead.
+        let (events, _) = broadcast::channel(64);
         Arc::new(Self {
             library,
             store: Mutex::new(store),
+            events,
         })
+    }
+
+    pub fn notify(&self, event: Event) {
+        // An error only means nobody is listening right now.
+        let _ = self.events.send(event);
+    }
+
+    pub fn subscribe(&self) -> broadcast::Receiver<Event> {
+        self.events.subscribe()
     }
 
     /// The store, for one short operation. Blocking: call from
@@ -43,7 +73,11 @@ impl App {
 
     /// Re-index `Recipes/`; with `force`, re-parse every file.
     pub fn sync(&self, force: bool) -> grocery_store::Result<SyncReport> {
-        self.store().sync_recipes(&self.library, force)
+        let report = self.store().sync_recipes(&self.library, force)?;
+        if report.changed() {
+            self.notify(Event::Recipes);
+        }
+        Ok(report)
     }
 }
 

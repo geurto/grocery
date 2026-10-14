@@ -151,18 +151,20 @@ fn sources_text(list: &ShoppingList) -> String {
         .join(", ")
 }
 
-/// A recipe prepared for export: header line, ingredient lines, method.
-struct RecipeText<'a> {
-    recipe: &'a Recipe,
+/// A recipe prepared for display: header line, ingredient lines, method.
+/// The text exports and the web app's recipe screen both use this.
+pub struct RecipeView<'a> {
+    pub recipe: &'a Recipe,
     /// "Serves 2 (recipe: 4) · pasta, quick"
-    info: String,
-    ingredients: Vec<String>,
+    pub info: String,
+    /// "spaghetti — 200 g", one per ingredient name, scaled.
+    pub ingredients: Vec<String>,
 }
 
-impl<'a> RecipeText<'a> {
+impl<'a> RecipeView<'a> {
     /// `servings` rescales the ingredient amounts; it's ignored for recipes
     /// that don't say how many they serve.
-    fn new(recipe: &'a Recipe, servings: Option<f64>) -> Self {
+    pub fn new(recipe: &'a Recipe, servings: Option<f64>) -> Self {
         let (factor, serves) = match (servings, recipe.servings) {
             (Some(want), Some(base)) if want > 0.0 && base > 0.0 && want != base => (
                 want / base,
@@ -324,14 +326,14 @@ fn fmt_amount(v: f64) -> String {
 /// The recipe as Markdown: ingredients (scaled to `servings` if given) and method.
 pub fn recipe_markdown(recipe: &Recipe, servings: Option<f64>) -> String {
     let mut out = String::new();
-    RecipeText::new(recipe, servings).write(&mut out, true);
+    RecipeView::new(recipe, servings).write(&mut out, true);
     out
 }
 
 /// The recipe as plain text, for a chat or a note.
 pub fn recipe_plain(recipe: &Recipe, servings: Option<f64>) -> String {
     let mut out = String::new();
-    RecipeText::new(recipe, servings).write(&mut out, false);
+    RecipeView::new(recipe, servings).write(&mut out, false);
     out
 }
 

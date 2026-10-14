@@ -3,6 +3,7 @@
 //!
 //! ```text
 //! GET    /api/status
+//! GET    /api/events                            server-sent events, see below
 //! POST   /api/reindex                           re-parse every recipe
 //! GET    /api/recipes?q=boerenkool              search title, tags, ingredients
 //! GET    /api/recipes/{path}?format=&servings=  one recipe; md/txt export
@@ -20,29 +21,41 @@
 //!
 //! `{path}` is the recipe's path relative to `Recipes/`, as listed by
 //! `/api/recipes` ("Pasta arrabbiata.cook", "soups/Tomato soup.cook").
+//!
+//! `/api/events` sends `{"type": "list", "id": 3}` when a list changes (or is
+//! created or deleted) and `{"type": "recipes"}` when the index changes; then
+//! fetch what you show again. `{"type": "resync"}` means events were missed:
+//! refetch everything. Also refetch after reconnecting.
 
+use std::convert::Infallible;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
+use axum::response::sse::{self, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use grocery_core::aggregate::{self, Selection};
-use grocery_core::model::Recipe;
+use grocery_core::model::{Content, Recipe};
 use grocery_core::nutrition::Options;
 use grocery_core::render;
 use grocery_store::{IndexedRecipe, ListStatus, ListSummary, StoredList};
 use serde::{Deserialize, Serialize};
+use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
+use tokio_stream::wrappers::BroadcastStream;
+use tokio_stream::{Stream, StreamExt};
 
-use crate::App;
+use crate::{App, Event};
 
 type Shared = Arc<App>;
 
 pub fn router(app: Shared) -> Router {
     Router::new()
         .route("/api/status", get(status))
+        .route("/api/events", get(events))
         .route("/api/reindex", post(reindex))
         .route("/api/recipes", get(search_recipes))
         .route("/api/recipes/{*path}", get(recipe))
@@ -57,6 +70,7 @@ pub fn router(app: Shared) -> Router {
             "/api/lists/{id}/items/{item}",
             patch(update_item).delete(delete_item),
         )
+        .fallback(crate::web::static_file)
         .with_state(app)
 }
 
@@ -208,6 +222,28 @@ async fn status(State(app): State<Shared>) -> ApiResult<Json<Status>> {
     .await
 }
 
+async fn events(
+    State(app): State<Shared>,
+) -> (
+    [(&'static str, &'static str); 1],
+    Sse<impl Stream<Item = Result<sse::Event, Infallible>>>,
+) {
+    let stream = BroadcastStream::new(app.subscribe()).map(|msg| {
+        let data = match msg {
+            Ok(event) => serde_json::to_string(&event).expect("events serialize"),
+            Err(BroadcastStreamRecvError::Lagged(_)) => r#"{"type":"resync"}"#.to_owned(),
+        };
+        Ok(sse::Event::default().data(data))
+    });
+    (
+        // Tell nginx and friends not to buffer the stream.
+        [("x-accel-buffering", "no")],
+        // Comments every 20 s keep proxies and phones from dropping an idle
+        // connection, and let the client notice a dead one.
+        Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(20))),
+    )
+}
+
 #[derive(Serialize)]
 struct Reindexed {
     added: usize,
@@ -245,6 +281,57 @@ struct RecipeJson {
     warnings: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     error: Option<String>,
+    /// Only on `/api/recipes/{path}`: the recipe ready to show, scaled to
+    /// `?servings=` if given.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display: Option<DisplayJson>,
+}
+
+#[derive(Serialize)]
+struct DisplayJson {
+    /// "Serves 2 (recipe: 4) · pasta, quick"
+    info: String,
+    /// "spaghetti — 200 g"
+    ingredients: Vec<String>,
+    sections: Vec<SectionJson>,
+}
+
+#[derive(Serialize)]
+struct SectionJson {
+    name: Option<String>,
+    steps: Vec<StepJson>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", content = "text", rename_all = "lowercase")]
+enum StepJson {
+    Step(String),
+    Note(String),
+}
+
+impl DisplayJson {
+    fn new(recipe: &Recipe, servings: Option<f64>) -> Self {
+        let view = render::RecipeView::new(recipe, servings);
+        Self {
+            info: view.info,
+            ingredients: view.ingredients,
+            sections: recipe
+                .sections
+                .iter()
+                .map(|s| SectionJson {
+                    name: s.name.clone(),
+                    steps: s
+                        .content
+                        .iter()
+                        .map(|c| match c {
+                            Content::Step(t) => StepJson::Step(t.clone()),
+                            Content::Note(t) => StepJson::Note(t.clone()),
+                        })
+                        .collect(),
+                })
+                .collect(),
+        }
+    }
 }
 
 impl From<IndexedRecipe> for RecipeJson {
@@ -258,6 +345,7 @@ impl From<IndexedRecipe> for RecipeJson {
             ingredients: r.ingredients,
             warnings: r.warnings,
             error: r.error,
+            display: None,
         }
     }
 }
@@ -319,7 +407,14 @@ async fn recipe(
                 .store()
                 .recipe(&path)?
                 .ok_or_else(|| ApiError::not_found(format!("recipe '{path}'")))?;
-            return Ok(Json(RecipeJson::from(entry)).into_response());
+            if entry.error.is_some() {
+                // Still useful: the error says what to fix.
+                return Ok(Json(RecipeJson::from(entry)).into_response());
+            }
+            let (entry, recipe) = load_recipe(app, &path)?;
+            let mut json = RecipeJson::from(entry);
+            json.display = Some(DisplayJson::new(&recipe, query.servings));
+            return Ok(Json(json).into_response());
         }
         let (_, recipe) = load_recipe(app, &path)?;
         Ok(match query.format {
@@ -511,6 +606,7 @@ async fn create_list(
 
         let mut store = app.store();
         let id = store.create_list(&title, &created, &built)?;
+        app.notify(Event::List { id });
         let stored = store
             .list(id)?
             .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
@@ -576,6 +672,7 @@ async fn update_list(
     }
     blocking(&app, move |app| {
         if app.store().update_list(id, title.as_deref(), status)? {
+            app.notify(Event::List { id });
             Ok(StatusCode::NO_CONTENT)
         } else {
             Err(ApiError::not_found(format!("list {id}")))
@@ -587,6 +684,7 @@ async fn update_list(
 async fn delete_list(State(app): State<Shared>, Path(id): Path<i64>) -> ApiResult<StatusCode> {
     blocking(&app, move |app| {
         if app.store().delete_list(id)? {
+            app.notify(Event::List { id });
             Ok(StatusCode::NO_CONTENT)
         } else {
             Err(ApiError::not_found(format!("list {id}")))
@@ -612,7 +710,10 @@ async fn add_item(
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     blocking(&app, move |app| {
         match app.store().add_item(id, &req.name)? {
-            Some(item) => Ok((StatusCode::CREATED, Json(Created { id: item }))),
+            Some(item) => {
+                app.notify(Event::List { id });
+                Ok((StatusCode::CREATED, Json(Created { id: item })))
+            }
             None => Err(ApiError::not_found(format!("list {id}"))),
         }
     })
@@ -631,6 +732,7 @@ async fn update_item(
 ) -> ApiResult<StatusCode> {
     blocking(&app, move |app| {
         if app.store().set_checked(id, item, req.checked)? {
+            app.notify(Event::List { id });
             Ok(StatusCode::NO_CONTENT)
         } else {
             Err(ApiError::not_found(format!("item {item} on list {id}")))
@@ -645,6 +747,7 @@ async fn delete_item(
 ) -> ApiResult<StatusCode> {
     blocking(&app, move |app| {
         if app.store().delete_item(id, item)? {
+            app.notify(Event::List { id });
             Ok(StatusCode::NO_CONTENT)
         } else {
             Err(ApiError::not_found(format!("item {item} on list {id}")))
