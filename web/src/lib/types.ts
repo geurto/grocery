@@ -140,6 +140,92 @@ export interface PlanNutrition {
   days: DayNutrition[];
 }
 
+/** A recipe as the editor shows it (crates/grocery-core/src/author.rs). */
+export interface RecipeSource {
+  title: string;
+  servings: number | null;
+  /** As written: "40 min". */
+  time: string | null;
+  tags: string[];
+  /** Other front matter (author, source, …) as YAML. */
+  extra: string;
+  /** The method, in Cooklang. */
+  body: string;
+}
+
+export interface RecipeFile {
+  path: string;
+  source: RecipeSource;
+  /** Sent back when saving: the save is refused if the file changed. */
+  version: string;
+  note: string | null;
+}
+
+export interface CheckedIngredient {
+  name: string;
+  amount: string | null;
+  optional: boolean;
+  /** `unknown`: not in aliases.yaml yet. */
+  status: 'known' | 'unknown';
+  food: string | null;
+  nutrition: 'nevo' | 'custom' | 'negligible' | 'none' | null;
+  /** Whether this amount converts to grams. */
+  weight: 'ok' | 'missing' | null;
+}
+
+export interface RecipeCheck {
+  error: string | null;
+  warnings: string[];
+  ingredients: CheckedIngredient[];
+  steps: number;
+  timers_seconds: number | null;
+}
+
+export interface Food {
+  name: string;
+  aisle: string | null;
+  synonyms: string[];
+  nevo: number | null;
+  custom: string | null;
+  negligible: boolean;
+  piece_g: number | null;
+  density: number | null;
+}
+
+export interface NevoHit {
+  code: number;
+  name_nl: string;
+  name_en: string;
+  group: string;
+  kcal: number | null;
+}
+
+/** Label values for a food NEVO lacks (crates/grocery-core/src/custom.rs). */
+export interface OwnValues {
+  per?: '100g' | '100ml';
+  source?: string;
+  energy_kcal?: number;
+  protein?: number;
+  fat?: number;
+  saturated_fat?: number;
+  carbohydrate?: number;
+  sugars?: number;
+  fibre?: number;
+  salt?: number;
+}
+
+export interface NewFood {
+  name: string;
+  aisle?: string;
+  synonyms?: string[];
+  nevo?: number;
+  own?: OwnValues;
+  negligible?: boolean;
+  piece_g?: number;
+  density?: number;
+  units?: Record<string, number>;
+}
+
 export type ServerEvent =
   | { type: 'list'; id: number }
   | { type: 'recipes' }

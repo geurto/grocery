@@ -4,11 +4,17 @@ import type {
   List,
   ListStatus,
   ListSummary,
+  Food,
   Meal,
+  NevoHit,
+  NewFood,
   Person,
   PlanEntry,
   PlanNutrition,
   Recipe,
+  RecipeCheck,
+  RecipeFile,
+  RecipeSource,
   RecipeSummary,
 } from './types';
 
@@ -81,6 +87,20 @@ export const api = {
       `/api/recipes/${enc(path)}?format=${format}${servings ? `&servings=${servings}` : ''}`,
     ),
   nutrition: (path: string) => request<string>('GET', `/api/nutrition/${enc(path)}`),
+
+  checkRecipe: (source: RecipeSource) =>
+    request<RecipeCheck>('POST', '/api/recipe-check', { source }),
+  recipeFolders: () => request<string[]>('GET', '/api/recipe-folders'),
+  recipeFile: (path: string) => request<RecipeFile>('GET', `/api/recipe-files/${enc(path)}`),
+  createRecipe: (folder: string, source: RecipeSource) =>
+    request<{ path: string }>('POST', '/api/recipe-files', { folder, source }),
+  saveRecipe: (path: string, source: RecipeSource, version: string) =>
+    request<{ path: string }>('PUT', `/api/recipe-files/${enc(path)}`, { source, version }),
+  foods: () => request<Food[]>('GET', '/api/foods'),
+  aisles: () => request<string[]>('GET', '/api/aisles'),
+  addFood: (food: NewFood) => request<{ name: string }>('POST', '/api/foods', food),
+  nevoSearch: (q: string) =>
+    request<NevoHit[]>('GET', `/api/nevo/search?q=${encodeURIComponent(q)}&limit=12`),
 
   people: () => request<Person[]>('GET', '/api/people'),
   addPerson: (name: string) => request<Person>('POST', '/api/people', { name }),

@@ -17,6 +17,16 @@
 //! POST   /api/lists/{id}/items                  {"name": "toilet paper"}
 //! PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 //! DELETE /api/lists/{id}/items/{item}
+//! POST   /api/recipe-check                      {"source"} → parse result, ingredients vs aliases.yaml
+//! GET    /api/recipe-folders                    folders under Recipes/
+//! GET    /api/recipe-files/{path}               {"source", "version"}: a recipe as editor fields
+//! POST   /api/recipe-files                      {"folder"?, "source"} → 201 {"path"}; 409 if it exists
+//! PUT    /api/recipe-files/{path}               {"source", "version"}; 409 if the file changed
+//! GET    /api/foods                             what aliases.yaml knows
+//! POST   /api/foods                             {"name", "aisle"?, "synonyms"?, "nevo"? | "custom"? |
+//!                                                "own"? | "negligible"?, "piece_g"?, "density"?, "units"?}
+//! GET    /api/aisles
+//! GET    /api/nevo/search?q=&limit=             NEVO foods by name (409 until imported)
 //! GET    /api/people
 //! POST   /api/people                            {"name": "Sam"}
 //! PATCH  /api/people/{id}                       {"name": "Sam"}
@@ -59,7 +69,7 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::{plans, App, Event};
+use crate::{edit, plans, App, Event};
 
 pub(crate) type Shared = Arc<App>;
 
@@ -77,6 +87,16 @@ pub fn router(app: Shared) -> Router {
             get(list).patch(update_list).delete(delete_list),
         )
         .route("/api/lists/{id}/items", post(add_item))
+        .route("/api/recipe-check", post(edit::check))
+        .route("/api/recipe-folders", get(edit::folders))
+        .route("/api/recipe-files", post(edit::create_recipe))
+        .route(
+            "/api/recipe-files/{*path}",
+            get(edit::get_source).put(edit::update_recipe),
+        )
+        .route("/api/foods", get(edit::foods).post(edit::add_food))
+        .route("/api/aisles", get(edit::aisles))
+        .route("/api/nevo/search", get(edit::nevo_search))
         .route("/api/people", get(plans::people).post(plans::add_person))
         .route(
             "/api/people/{id}",

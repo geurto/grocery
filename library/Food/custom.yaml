@@ -124,3 +124,14 @@ foods:
     sugars: 2.1
     fibre: 22.0
     salt: 0.01
+  harissa:
+    per: 100g
+    source: package
+    energy_kcal: 117.0
+    protein: 1.8
+    fat: 7.2
+    saturated_fat: 1.0
+    carbohydrate: 9.4
+    sugars: 7.5
+    fibre: 2.1
+    salt: 2.5

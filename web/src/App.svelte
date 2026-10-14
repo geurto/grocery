@@ -9,7 +9,9 @@
   import TabBar from './components/TabBar.svelte';
   import TimerPill from './components/TimerPill.svelte';
   import Cook from './routes/Cook.svelte';
+  import Foods from './routes/Foods.svelte';
   import Plan from './routes/Plan.svelte';
+  import RecipeEdit from './routes/RecipeEdit.svelte';
   import PlanAdd from './routes/PlanAdd.svelte';
   import PlanList from './routes/PlanList.svelte';
 
@@ -34,6 +36,12 @@
   <NewList />
 {:else if route.name === 'cook'}
   {#key route.path}<Cook path={route.path} servings={route.servings} />{/key}
+{:else if route.name === 'recipe-new'}
+  <RecipeEdit folder={route.folder} />
+{:else if route.name === 'recipe-edit'}
+  {#key route.path}<RecipeEdit path={route.path} />{/key}
+{:else if route.name === 'foods'}
+  <Foods />
 {:else if route.name === 'plan'}
   <Plan day={route.day} />
 {:else if route.name === 'plan-add'}

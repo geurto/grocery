@@ -10,6 +10,9 @@ export type Route =
   | { name: 'recipes' }
   | { name: 'recipe'; path: string; servings?: number }
   | { name: 'cook'; path: string; servings?: number }
+  | { name: 'recipe-new'; folder?: string }
+  | { name: 'recipe-edit'; path: string }
+  | { name: 'foods' }
   | { name: 'plan'; day?: string }
   | { name: 'plan-add'; day: string; meal: Meal | null }
   | { name: 'plan-list'; start: string };
@@ -26,6 +29,14 @@ export function parse(hash: string): Route {
   }
   if (parts[0] === 'new') return { name: 'new' };
   if (parts[0] === 'recipes') return { name: 'recipes' };
+  if (parts[0] === 'foods') return { name: 'foods' };
+  if (parts[0] === 'new-recipe') {
+    const folder = params.get('folder');
+    return { name: 'recipe-new', folder: folder || undefined };
+  }
+  if (parts[0] === 'edit' && parts.length > 1) {
+    return { name: 'recipe-edit', path: parts.slice(1).map(decodeURIComponent).join('/') };
+  }
   if ((parts[0] === 'recipe' || parts[0] === 'cook') && parts.length > 1) {
     const servings = Number(params.get('servings'));
     return {
@@ -56,6 +67,12 @@ export function href(route: Route): string {
       return '#/new';
     case 'recipes':
       return '#/recipes';
+    case 'foods':
+      return '#/foods';
+    case 'recipe-new':
+      return route.folder ? `#/new-recipe?folder=${encodeURIComponent(route.folder)}` : '#/new-recipe';
+    case 'recipe-edit':
+      return `#/edit/${route.path.split('/').map(encodeURIComponent).join('/')}`;
     case 'plan':
       return route.day ? `#/plan/${route.day}` : '#/plan';
     case 'plan-add':

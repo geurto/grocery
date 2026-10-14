@@ -15,7 +15,11 @@
   const groups = $derived(byFolder(results));
 </script>
 
-<Header title="Recipes" />
+<Header title="Recipes">
+  {#snippet actions()}
+    <a class="btn head-btn" href={href({ name: 'foods' })}>Foods</a>
+  {/snippet}
+</Header>
 
 <main>
   <input
@@ -54,7 +58,22 @@
   {/if}
 </main>
 
+<a class="btn primary fab" href={href({ name: 'recipe-new' })}>+ New recipe</a>
+
 <style>
+  .head-btn {
+    min-height: 38px;
+    padding: 0 0.9rem;
+    font-size: 0.9rem;
+  }
+  .fab {
+    position: fixed;
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(1rem + var(--tabbar) + env(safe-area-inset-bottom));
+    min-height: 54px;
+    padding: 0 1.3rem;
+    box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);
+  }
   .search {
     margin-bottom: 1rem;
   }

@@ -10,6 +10,7 @@
 //! can re-run it whenever a file changes.
 
 pub mod aggregate;
+pub mod author;
 pub mod custom;
 pub mod error;
 pub mod food;
