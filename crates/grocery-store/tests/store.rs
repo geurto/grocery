@@ -97,11 +97,11 @@ fn reimport_replaces_everything() {
 fn compositions_keep_unknowns_absent() {
     let store = imported();
     let table = store.compositions(&BTreeSet::from([3, 4, 999])).unwrap();
-    let pasta = table.get(3).unwrap();
+    let pasta = table.nevo(3).unwrap();
     assert_eq!(pasta.values["ENERCC"], 340.0);
     assert!(!pasta.values.contains_key("VITC"));
-    assert!(!table.get(4).unwrap().values.contains_key("NA"));
-    assert!(table.get(999).is_none());
+    assert!(!table.nevo(4).unwrap().values.contains_key("NA"));
+    assert!(table.nevo(999).is_none());
 }
 
 #[test]
@@ -228,10 +228,65 @@ fn end_to_end_nutrition() {
     assert_eq!(n.per_serving("SALT").unwrap().1.missing_in, ["Olie olijf-"]);
 
     let text = store
-        .nutrition_report(&recipe, &foods, Options::default(), false)
+        .nutrition_report(
+            &recipe,
+            &foods,
+            &grocery_core::custom::CustomFoods::default(),
+            Options::default(),
+            false,
+        )
         .unwrap();
     assert!(text.contains("No amount given: zout"), "{text}");
     assert!(text
         .trim_end()
         .ends_with("NEVO online version 2099/1.0, RIVM, Bilthoven"));
+}
+
+/// Own foods are merged in, labelled, and typo'd nutrient codes are called out.
+#[test]
+fn nutrition_report_with_custom_foods() {
+    use grocery_core::custom::CustomFoods;
+    use grocery_core::food::FoodDb;
+    use grocery_core::nutrition::Options;
+    use grocery_core::parse::Parser;
+
+    let store = imported();
+    let foods = FoodDb::from_yaml(
+        "foods:\n\
+         \x20 onion: { nevo: 1, piece_g: 100, synonyms: [ui] }\n\
+         \x20 tahini: { custom: Tahini }\n",
+        Path::new("aliases.yaml"),
+    )
+    .unwrap();
+    let custom = CustomFoods::from_yaml(
+        "foods:\n  Tahini:\n    source: jar\n    energy_kcal: 600\n    protein: 17\n    nutrients: { VITCC: 1, VITC: 0 }\n",
+        Path::new("custom.yaml"),
+    )
+    .unwrap();
+    let recipe = Parser::new()
+        .parse(
+            Path::new("Test.cook"),
+            "---\nservings: 1\n---\nMix @ui{1} and @tahini{50%g}.",
+        )
+        .unwrap();
+
+    let text = store
+        .nutrition_report(&recipe, &foods, &custom, Options::default(), false)
+        .unwrap();
+    // onion 100 g × 25 kcal + tahini 50 g × 600 kcal
+    assert!(
+        text.contains("Energy                    325 kcal"),
+        "{text}"
+    );
+    assert!(
+        text.contains("Own values from Food/custom.yaml, not NEVO data: Tahini (jar)"),
+        "{text}"
+    );
+    assert!(text.contains("typo?): Tahini: VITCC"), "{text}");
+    assert!(!text.contains("VITC:"), "real codes aren't flagged: {text}");
+    assert!(
+        text.trim_end()
+            .ends_with("Based on data from NEVO online version 2099/1.0, RIVM, Bilthoven"),
+        "{text}"
+    );
 }

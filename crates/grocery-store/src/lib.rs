@@ -16,7 +16,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use grocery_core::nutrition::{Basis, Composition, CompositionTable};
+use grocery_core::nutrition::{Basis, Composition, CompositionTable, FoodKey};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub use import::{read_nevo, NevoData};
@@ -376,8 +376,9 @@ impl Store {
                 })?
                 .collect::<Result<_, _>>()?;
             foods.push(Composition {
-                code,
+                key: FoodKey::Nevo(code),
                 name: rec.name_nl,
+                source: None,
                 basis: rec.basis,
                 values: vals,
             });

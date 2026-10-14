@@ -48,7 +48,7 @@ foods:
     aisle: groente & fruit
     synonyms: [boerenkool]
   coriander:
-    nevo: ~             # not in NEVO 2025/9.0
+    custom: fresh coriander   # not in NEVO 2025/9.0: own values, see custom.yaml
     aisle: groente & fruit
     synonyms: [verse koriander, cilantro]
   basil:

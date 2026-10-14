@@ -5,10 +5,12 @@
 //!   Recipes/            .cook files, any depth
 //!   Food/aliases.yaml   ingredient names → foods, aisles, gram data, NEVO codes
 //!   Food/pantry.yaml    staples never put on a list
+//!   Food/custom.yaml    your own nutrition values, for foods NEVO lacks
 //! ```
 
 use std::path::{Path, PathBuf};
 
+use crate::custom::CustomFoods;
 use crate::error::{Error, Result};
 use crate::food::{FoodDb, Pantry};
 use crate::parse::{self, Parser};
@@ -41,6 +43,15 @@ impl Library {
 
     pub fn food_db(&self) -> Result<FoodDb> {
         FoodDb::load(&self.aliases_path())
+    }
+
+    pub fn custom_path(&self) -> PathBuf {
+        self.root.join("Food/custom.yaml")
+    }
+
+    /// The user's own nutrition values; a missing file is an empty set.
+    pub fn custom_foods(&self) -> Result<CustomFoods> {
+        CustomFoods::load(&self.custom_path())
     }
 
     pub fn pantry(&self) -> Result<Pantry> {

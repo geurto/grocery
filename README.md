@@ -40,6 +40,7 @@ Recipes can be given as a path or by name (case-insensitive file name from
 Recipes/           .cook files, subfolders allowed
 Food/aliases.yaml  ingredient names → foods, aisle, gram conversions, NEVO code
 Food/pantry.yaml   staples never put on the list
+Food/custom.yaml   your own nutrition values, for foods NEVO doesn't have
 ```
 
 Only `Recipes/` and `Food/` are read; nothing is written there. Back up the
@@ -220,11 +221,64 @@ cargo run -q -- nevo show 959                             # one food per 100 g
 cargo run -q -- nevo suggest                              # codes for unmapped foods
 ```
 
+## Your own foods (custom.yaml)
+
+For something NEVO doesn't have (fresh coriander, a branded product), copy
+the numbers off the package. They live in `Food/custom.yaml`, apart from the
+NEVO data: a re-import replaces NEVO wholesale, RIVM's conditions require
+its values to stay unchanged, and reports say which numbers are yours.
+
+```sh
+grocery custom add "fresh coriander"     # asks for each line of the label
+grocery custom add tahini --kcal 595 --fat 53 --protein 17 --carbs 9 --salt 0.05 \
+  --source "jar, Albert Heijn"           # or give everything as flags
+grocery custom list                      # what you have, and what uses it
+```
+
+or edit the file yourself (the command appends to it and keeps your comments):
+
+```yaml
+foods:
+  fresh coriander:
+    per: 100g                  # or 100ml; default 100g
+    source: package, Albert Heijn
+    energy_kcal: 23            # energy_kj works too (kcal is derived)
+    protein: 2.1
+    fat: 0.5
+    saturated_fat: 0.03
+    carbohydrate: 3.7
+    sugars: 0.9
+    fibre: 2.8
+    salt: 0.1                  # label salt, g; or sodium_mg
+    nutrients: { VITC: 27 }    # any NEVO nutrient code, in NEVO's unit
+```
+
+Then point a food in `aliases.yaml` at it, instead of a NEVO code:
+
+```yaml
+  coriander:
+    custom: fresh coriander
+```
+
+- Values are per 100 g (or 100 ml), as on a label. Salt is converted to
+  sodium the EU way (sodium × 2.5 = salt), so it adds up with NEVO's.
+- **Leave out what the label doesn't list.** A missing value is unknown, not
+  0: totals that use the food get the `*` and list it under "no value for".
+- The report adds "Own values from Food/custom.yaml, not NEVO data: …" with
+  your `source`, and marks those lines `(own value)`. The NEVO citation stays.
+- Mistakes are errors, not silent zeros: unknown fields, negative numbers,
+  both `salt` and `sodium_mg`, both `nevo` and `custom` on one food. A
+  nutrient code NEVO doesn't have is called out in the report (typo?).
+- `grocery check` lists foods with neither a `nevo` nor a `custom` entry, and
+  `custom:` names that aren't in the file.
+- For a homemade mix, prefer a recipe over typed-in numbers (they'd go stale
+  when the recipe changes). Recipe references aren't expanded yet.
+
 ## aliases.yaml
 
 See `examples/library/Food/aliases.yaml`. Each food can have `synonyms`, an
 `aisle`, and the data to convert to grams: `piece_g`, `units` (per named unit)
-and `density` (g/ml), plus `nevo:` for nutrition. Typos in field names
+and `density` (g/ml), plus `nevo:` (or `custom:`, see above) for nutrition. Typos in field names
 and a synonym listed under two foods are errors, not silent misses.
 
 `grocery check` lists every ingredient name that doesn't resolve and every
@@ -258,8 +312,9 @@ for every nutrient. Totals are divided by the recipe's `servings`.
   value for some ingredient is marked `*` and the report lists which foods
   lack what. Trace amounts are 0 in NEVO itself and are kept as 0.
 - **Coverage** is counted weight ÷ known weight. Lines that can't be counted
-  are listed with the reason: not in aliases, no `nevo` code, code not in the
-  dataset, or no gram weight for the unit. "To taste" lines are listed
+  are listed with the reason: not in aliases, no `nevo` or `custom` entry, code
+  not in the dataset (or name not in custom.yaml), or no gram weight for the
+  unit. "To taste" lines are listed
   separately, as they have no weight. Salt to taste is therefore never in the
   salt figure.
 - **Optional** ingredients are left out unless `--with-optional` (API: `?optional=true`).
@@ -279,7 +334,8 @@ From RIVM's conditions for NEVO-online 2025/9.0, which this code follows:
 - Every nutrition output carries "Based on data from NEVO online version
   <version>, RIVM, Bilthoven"; the version comes from the imported file.
 - Data must be used unchanged: values are stored exactly as published.
-  `aliases.yaml` weights and densities are your own additions, not NEVO data.
+  `aliases.yaml` weights and densities and everything in `custom.yaml` are
+  your own additions, kept apart and labelled as such in reports.
 - No charging end users for the data.
 
 The dataset isn't included in this repository. Tests use synthetic fixtures;
@@ -302,7 +358,8 @@ the real export is only read by an ignored test
 - Raw vs cooked matters: map to the "rauw" entry when the recipe gives raw
   weights. Vitamin losses during cooking aren't modelled.
 - A few foods aren't in NEVO (fresh coriander, for one); they show up as
-  "no nevo code" rather than being guessed.
+  "no nevo or custom entry" rather than being guessed. Add them to
+  `custom.yaml` (above).
 - cooklang 0.19 quirks handled here: its `ADVANCED_UNITS` extension is off
   (it rejects `~{5%minutes}` without bundled units), `@x{100 g}` without `%`
   is recovered from the text value, and a spurious "unnecessary scaling

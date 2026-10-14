@@ -422,3 +422,21 @@ async fn unknown_api_routes_are_json_404s() {
     let (_, ctype, _) = f.call(Method::GET, "/", None).await;
     assert!(ctype.starts_with("text/html"), "{ctype}");
 }
+
+#[tokio::test]
+async fn a_broken_custom_yaml_is_reported_not_ignored() {
+    let f = Fixture::new();
+    std::fs::write(
+        f.app.library.root().join("Food/custom.yaml"),
+        "foods:\n  tahini: { protien: 17 }\n",
+    )
+    .unwrap();
+    let (status, err) = f
+        .json(Method::GET, "/api/nutrition/Shakshuka.cook", None)
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        err["error"].as_str().unwrap().contains("custom.yaml"),
+        "{err}"
+    );
+}

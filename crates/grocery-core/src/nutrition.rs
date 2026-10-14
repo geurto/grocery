@@ -1,7 +1,8 @@
 //! Nutrition estimates for a recipe.
 //!
-//! Pure: compositions come in as a [`CompositionTable`] (built by
-//! `grocery-store` from NEVO), so this is testable without a database.
+//! Pure: compositions come in as a [`CompositionTable`] (NEVO rows built by
+//! `grocery-store`, plus the user's own foods from [`crate::custom`]), so this
+//! is testable without a database.
 //!
 //! Three rules keep the numbers honest:
 //! - **Unknown is not zero.** A nutrient NEVO has no value for is absent from
@@ -15,7 +16,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Write as _;
 
-use crate::food::{FoodDb, FoodInfo};
+use crate::food::{normalize_name, FoodDb, FoodInfo};
 use crate::model::{Amount, Recipe};
 use crate::units::{self, Dim};
 
@@ -27,10 +28,21 @@ pub enum Basis {
     Per100ml,
 }
 
+/// Where a composition comes from. NEVO rows are RIVM's data, kept exactly
+/// as published; custom rows are the user's own (`Food/custom.yaml`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum FoodKey {
+    Nevo(u32),
+    /// Normalized name, as in [`normalize_name`].
+    Custom(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Composition {
-    pub code: u32,
+    pub key: FoodKey,
     pub name: String,
+    /// For custom foods: where the numbers came from ("package label").
+    pub source: Option<String>,
     pub basis: Basis,
     /// Nutrient code (e.g. "ENERCC", "PROT") → amount per 100 g/ml in the
     /// nutrient's unit. Missing key = not known.
@@ -39,18 +51,29 @@ pub struct Composition {
 
 #[derive(Debug, Clone, Default)]
 pub struct CompositionTable {
-    foods: HashMap<u32, Composition>,
+    foods: HashMap<FoodKey, Composition>,
 }
 
 impl CompositionTable {
     pub fn new(foods: impl IntoIterator<Item = Composition>) -> Self {
         Self {
-            foods: foods.into_iter().map(|c| (c.code, c)).collect(),
+            foods: foods.into_iter().map(|c| (c.key.clone(), c)).collect(),
         }
     }
 
-    pub fn get(&self, code: u32) -> Option<&Composition> {
-        self.foods.get(&code)
+    /// Add more compositions (the user's own foods); same key replaces.
+    pub fn extend(&mut self, foods: impl IntoIterator<Item = Composition>) {
+        self.foods
+            .extend(foods.into_iter().map(|c| (c.key.clone(), c)));
+    }
+
+    pub fn get(&self, key: &FoodKey) -> Option<&Composition> {
+        self.foods.get(key)
+    }
+
+    /// Shorthand for a NEVO code.
+    pub fn nevo(&self, code: u32) -> Option<&Composition> {
+        self.foods.get(&FoodKey::Nevo(code))
     }
 }
 
@@ -73,7 +96,7 @@ pub struct Options {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Status {
     Counted {
-        nevo: u32,
+        key: FoodKey,
         food: String,
         basis: Basis,
         /// In the composition's basis unit (g or ml).
@@ -84,10 +107,12 @@ pub enum Status {
     },
     /// Name doesn't resolve through `aliases.yaml`.
     NotInAliases { grams: Option<f64> },
-    /// Food is known but has no `nevo:` code.
+    /// Food is known but has neither a `nevo:` code nor a `custom:` entry.
     NoNevoCode { grams: Option<f64> },
     /// `nevo:` points at a code that isn't in the imported dataset.
     NevoNotFound { code: u32, grams: Option<f64> },
+    /// `custom:` names a food that isn't in `Food/custom.yaml`.
+    CustomNotFound { name: String, grams: Option<f64> },
     /// Mapped, but the amount can't be converted ("1 blik" with no weight).
     NoWeight { unit: String },
     /// "to taste" or a text amount.
@@ -146,6 +171,7 @@ impl Nutrition {
                 }
                 Status::NotInAliases { grams: Some(g) }
                 | Status::NoNevoCode { grams: Some(g) }
+                | Status::CustomNotFound { grams: Some(g), .. }
                 | Status::NevoNotFound { grams: Some(g), .. } => known += g,
                 _ => {}
             }
@@ -179,7 +205,7 @@ pub fn compute(recipe: &Recipe, db: &FoodDb, table: &CompositionTable, opts: Opt
     let counted: Vec<(&Composition, f64)> = lines
         .iter()
         .filter_map(|l| match &l.status {
-            Status::Counted { nevo, amount, .. } => Some((table.get(*nevo)?, *amount)),
+            Status::Counted { key, amount, .. } => Some((table.get(key)?, *amount)),
             _ => None,
         })
         .collect();
@@ -229,11 +255,17 @@ fn classify(name: &str, amount: &Amount, db: &FoodDb, table: &CompositionTable) 
     };
     let info: &FoodInfo = resolved.info;
     let grams = FoodDb::grams(info, &q);
-    let Some(code) = info.nevo else {
-        return Status::NoNevoCode { grams };
+    // `FoodDb` rejects a food with both, so at most one of these is set.
+    let key = match (info.nevo, &info.custom) {
+        (Some(code), _) => FoodKey::Nevo(code),
+        (None, Some(name)) => FoodKey::Custom(normalize_name(name)),
+        (None, None) => return Status::NoNevoCode { grams },
     };
-    let Some(comp) = table.get(code) else {
-        return Status::NevoNotFound { code, grams };
+    let Some(comp) = table.get(&key) else {
+        return match key {
+            FoodKey::Nevo(code) => Status::NevoNotFound { code, grams },
+            FoodKey::Custom(name) => Status::CustomNotFound { name, grams },
+        };
     };
     let amount = match comp.basis {
         Basis::Per100g => grams,
@@ -241,7 +273,7 @@ fn classify(name: &str, amount: &Amount, db: &FoodDb, table: &CompositionTable) 
     };
     match amount {
         Some(amount) => Status::Counted {
-            nevo: code,
+            key,
             food: comp.name.clone(),
             basis: comp.basis,
             amount,
@@ -456,12 +488,17 @@ pub fn render_text(
                 fmt_grams(&l.amount, *grams)
             )),
             Status::NoNevoCode { grams } => not_counted.push(format!(
-                "{} ({amount}{}): no nevo code",
+                "{} ({amount}{}): no nevo or custom entry",
                 l.name,
                 fmt_grams(&l.amount, *grams)
             )),
             Status::NevoNotFound { code, grams } => not_counted.push(format!(
                 "{} ({amount}{}): nevo {code} not in dataset",
+                l.name,
+                fmt_grams(&l.amount, *grams)
+            )),
+            Status::CustomNotFound { name, grams } => not_counted.push(format!(
+                "{} ({amount}{}): '{name}' not in custom.yaml",
                 l.name,
                 fmt_grams(&l.amount, *grams)
             )),
@@ -495,7 +532,7 @@ pub fn render_text(
         );
     }
     if !gaps.is_empty() {
-        let _ = writeln!(out, "* lower bound; NEVO has no value for:");
+        let _ = writeln!(out, "* lower bound; no value for:");
         for (food, labels) in &gaps {
             let _ = writeln!(out, "  - {food}: {}", labels.join(", "));
         }
@@ -505,14 +542,18 @@ pub fn render_text(
     let _ = writeln!(out, "\nIngredients (whole recipe)");
     for l in &n.lines {
         if let Status::Counted {
-            nevo,
+            key,
             food,
             basis,
             amount,
             ..
         } = &l.status
         {
-            let comp = table.get(*nevo);
+            let comp = table.get(key);
+            let origin = match key {
+                FoodKey::Nevo(code) => code.to_string(),
+                FoodKey::Custom(_) => "own value".to_owned(),
+            };
             let get = |code: &str| {
                 comp.and_then(|c| c.values.get(code))
                     .map(|v| v * amount / 100.0)
@@ -526,7 +567,7 @@ pub fn render_text(
                 .unwrap_or_else(|| "? prot".into());
             let _ = writeln!(
                 out,
-                "  {:<20} {:>12} → {:>5.0} {unit:<2} {:>9} {:>11}   {food} ({nevo})",
+                "  {:<20} {:>12} → {:>5.0} {unit:<2} {:>9} {:>11}   {food} ({origin})",
                 l.name,
                 fmt_amount(&l.amount),
                 amount,
@@ -534,6 +575,33 @@ pub fn render_text(
                 prot
             );
         }
+    }
+
+    // Own values aren't NEVO data: say so, and where they came from.
+    let mut own: Vec<String> = Vec::new();
+    for l in &n.lines {
+        if let Status::Counted {
+            key: key @ FoodKey::Custom(_),
+            food,
+            ..
+        } = &l.status
+        {
+            let source = table.get(key).and_then(|c| c.source.as_deref());
+            let text = match source {
+                Some(src) => format!("{food} ({src})"),
+                None => food.clone(),
+            };
+            if !own.contains(&text) {
+                own.push(text);
+            }
+        }
+    }
+    if !own.is_empty() {
+        let _ = writeln!(
+            out,
+            "\nOwn values from Food/custom.yaml, not NEVO data: {}",
+            own.join("; ")
+        );
     }
 
     let _ = writeln!(out, "\n{citation}");
@@ -549,8 +617,9 @@ mod tests {
 
     fn comp(code: u32, name: &str, basis: Basis, values: &[(&str, f64)]) -> Composition {
         Composition {
-            code,
+            key: FoodKey::Nevo(code),
             name: name.into(),
+            source: None,
             basis,
             values: values.iter().map(|(k, v)| ((*k).to_owned(), *v)).collect(),
         }
@@ -732,6 +801,78 @@ mod tests {
         assert_eq!(
             needed_codes(&r, &db()).into_iter().collect::<Vec<_>>(),
             [1, 2]
+        );
+    }
+
+    #[test]
+    fn custom_foods_are_counted_and_labelled_as_own_values() {
+        use crate::custom::CustomFoods;
+
+        let custom = CustomFoods::from_yaml(
+            "foods:\n  Fresh Coriander:\n    source: AH label\n    energy_kcal: 23\n    protein: 2.1\n",
+            Path::new("custom.yaml"),
+        )
+        .unwrap();
+        let db = FoodDb::from_yaml(
+            "foods:\n\
+             \x20 pasta: { nevo: 1 }\n\
+             \x20 coriander: { custom: fresh coriander }\n\
+             \x20 cumin: { custom: nope }\n",
+            Path::new("aliases.yaml"),
+        )
+        .unwrap();
+        let mut table = table();
+        table.extend(custom.compositions());
+        let r = recipe(
+            Some(1.0),
+            &[
+                ("pasta", v(100.0, Some("g")), false),
+                ("coriander", v(50.0, Some("g")), false),
+                ("cumin", v(5.0, Some("g")), false),
+            ],
+        );
+        let n = compute(&r, &db, &table, Options::default());
+        assert!(matches!(
+            &n.lines[1].status,
+            Status::Counted { key: FoodKey::Custom(k), .. } if k == "fresh coriander"
+        ));
+        assert_eq!(
+            n.lines[2].status,
+            Status::CustomNotFound {
+                name: "nope".into(),
+                grams: Some(5.0)
+            }
+        );
+        // 350 + 50 × 23 / 100
+        assert!((n.per_serving("ENERCC").unwrap().0 - 361.5).abs() < 1e-9);
+        // the label gave no sodium: unknown, so salt is a lower bound naming the food
+        assert_eq!(
+            n.per_serving("SALT").unwrap().1.missing_in,
+            ["Fresh Coriander"]
+        );
+
+        let text = render_text(&n, &table, &default_rows(), "CITATION");
+        assert!(
+            text.contains(
+                "Own values from Food/custom.yaml, not NEVO data: Fresh Coriander (AH label)"
+            ),
+            "{text}"
+        );
+        assert!(text.contains("Fresh Coriander (own value)"), "{text}");
+        assert!(text.contains("'nope' not in custom.yaml"), "{text}");
+        assert!(text.trim_end().ends_with("CITATION"));
+    }
+
+    #[test]
+    fn a_food_cant_have_both_nevo_and_custom() {
+        let err = FoodDb::from_yaml(
+            "foods:\n  x: { nevo: 1, custom: y }\n",
+            Path::new("aliases.yaml"),
+        )
+        .unwrap_err();
+        assert!(
+            err.to_string().contains("both `nevo` and `custom`"),
+            "{err}"
         );
     }
 

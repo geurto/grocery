@@ -160,7 +160,7 @@ pub fn show(db: &Path, code: u32, all: bool) -> Result<ExitCode> {
         bail!("NEVO {} has no food with code {code}", info.version);
     };
     let table = store.compositions(&[code].into())?;
-    let comp = table.get(code).expect("food exists");
+    let comp = table.nevo(code).expect("food exists");
     let per = match food.basis {
         Basis::Per100g => "100 g",
         Basis::Per100ml => "100 ml",
@@ -214,14 +214,15 @@ pub fn suggest(library: &Library, db: &Path, limit: usize) -> Result<ExitCode> {
     let foods = library.food_db()?;
     let missing: Vec<_> = foods
         .foods()
-        .filter(|(_, info)| info.nevo.is_none())
+        .filter(|(_, info)| info.nevo.is_none() && info.custom.is_none())
         .collect();
     if missing.is_empty() {
         println!("every food in Food/aliases.yaml has a nevo code");
         return Ok(ExitCode::SUCCESS);
     }
     println!(
-        "{} foods without a nevo code. Add the right one as `nevo: <code>` in Food/aliases.yaml.\n\
+        "{} foods without a nevo code or custom entry. Add the right one as `nevo: <code>` in Food/aliases.yaml,\n\
+         or, if NEVO simply doesn't have it, `grocery custom add \"<name>\"`.\n\
          Pick the raw product when recipes weigh it raw (pasta 'rauw' ≈ dry, not 'gekookt').\n",
         missing.len()
     );
@@ -267,11 +268,15 @@ pub fn nutrition(
 ) -> Result<ExitCode> {
     let recipe = crate::load(library, recipe)?;
     let foods = library.food_db()?;
+    let custom = library.custom_foods()?;
     let store = open_store(db)?;
     let opts = Options {
         include_optional: with_optional,
     };
-    print!("{}", store.nutrition_report(&recipe, &foods, opts, all)?);
+    print!(
+        "{}",
+        store.nutrition_report(&recipe, &foods, &custom, opts, all)?
+    );
     for w in &recipe.warnings {
         eprintln!("warning: {w}");
     }

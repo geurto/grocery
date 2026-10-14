@@ -9,6 +9,7 @@
 //! foods:
 //!   onion:
 //!     nevo: 63             # NEVO code ("Ui rauw"); `grocery nevo suggest` helps
+//!                          # (or `custom: <name>` for a food in custom.yaml)
 //!     piece_g: 110         # weight of one piece (shorthand for units: {pc: 110})
 //!     aisle: groente & fruit
 //!     synonyms: [onions, ui, uien]
@@ -32,6 +33,9 @@ use crate::units::{named_key, Dim, Normalized};
 pub struct FoodInfo {
     /// NEVO food code (Dutch food composition database).
     pub nevo: Option<u32>,
+    /// Name of a food in `Food/custom.yaml`, for nutrition values NEVO
+    /// doesn't have. Not together with `nevo`.
+    pub custom: Option<String>,
     /// Grams per piece.
     pub piece_g: Option<f64>,
     /// Grams per millilitre.
@@ -105,6 +109,12 @@ impl FoodDb {
             // `onion:` with no body is allowed: a known food without details yet.
             let mut info = info.unwrap_or_default();
             let canonical = normalize_name(&name);
+            if info.nevo.is_some() && info.custom.is_some() {
+                return Err(Error::Config {
+                    path: path.into(),
+                    message: format!("'{name}' has both `nevo` and `custom`; use one"),
+                });
+            }
             // Named units are matched on their normalized key.
             info.units = info
                 .units

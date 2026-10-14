@@ -442,9 +442,11 @@ async fn nutrition(
     blocking(&app, move |app| {
         let (_, recipe) = load_recipe(app, &path)?;
         let foods = app.library.food_db()?;
+        let custom = app.library.custom_foods()?;
         let report = app.store().nutrition_report(
             &recipe,
             &foods,
+            &custom,
             Options {
                 include_optional: query.optional,
             },

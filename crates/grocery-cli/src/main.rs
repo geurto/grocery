@@ -12,8 +12,10 @@
 //! grocery nevo search boerenkool                     # find NEVO codes
 //! grocery nevo suggest                               # candidates for unmapped foods
 //! grocery nutrition Shakshuka                        # per-serving estimate
+//! grocery custom add "fresh coriander"               # your own values, from a label
 //! ```
 
+mod custom_cmd;
 mod nevo_cmd;
 
 use std::collections::BTreeMap;
@@ -44,6 +46,7 @@ struct Cli {
     command: Command,
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Subcommand)]
 enum Command {
     /// Build a shopping list. RECIPE is a path or a name from Recipes/,
@@ -82,6 +85,11 @@ enum Command {
         /// Count optional ingredients too.
         #[arg(long)]
         with_optional: bool,
+    },
+    /// Your own nutrition values for foods NEVO lacks (Food/custom.yaml).
+    Custom {
+        #[command(subcommand)]
+        command: custom_cmd::CustomCommand,
     },
     /// Run the web service: recipe index, shopping lists, exports.
     Serve {
@@ -169,6 +177,7 @@ fn run() -> Result<ExitCode> {
             all,
             with_optional,
         } => nevo_cmd::nutrition(library, &db, &recipe, all, with_optional),
+        Command::Custom { command } => custom_cmd::run(library, command),
         Command::Serve { .. } => unreachable!("handled above"),
     }
 }
@@ -279,6 +288,7 @@ fn check(library: &Library) -> Result<ExitCode> {
         bail!("{} does not exist", dir.display());
     }
     let db = library.food_db()?;
+    let custom = library.custom_foods()?;
     let (recipes, errors) = library.parser.parse_dir(&dir)?;
 
     for e in &errors {
@@ -300,7 +310,9 @@ fn check(library: &Library) -> Result<ExitCode> {
         for ing in &r.ingredients {
             let users = match db.resolve(&ing.name) {
                 None => unmapped.entry(ing.name.to_lowercase()).or_default(),
-                Some(res) if res.info.nevo.is_none() => no_nevo.entry(res.canonical).or_default(),
+                Some(res) if res.info.nevo.is_none() && res.info.custom.is_none() => {
+                    no_nevo.entry(res.canonical).or_default()
+                }
                 Some(_) => continue,
             };
             if !users.contains(&r.title.as_str()) {
@@ -310,11 +322,18 @@ fn check(library: &Library) -> Result<ExitCode> {
     }
 
     println!(
-        "{} recipes parsed, {} failed, {} foods in aliases.yaml",
+        "{} recipes parsed, {} failed, {} foods in aliases.yaml, {} own foods in custom.yaml",
         recipes.len(),
         errors.len(),
-        db.len()
+        db.len(),
+        custom.len()
     );
+    let dangling = custom_cmd::missing_references(&db, &custom);
+    for (food, name) in &dangling {
+        eprintln!(
+            "error: aliases.yaml: '{food}' uses custom '{name}', which isn't in Food/custom.yaml"
+        );
+    }
     if unmapped.is_empty() {
         println!("every ingredient resolves");
     } else {
@@ -325,14 +344,14 @@ fn check(library: &Library) -> Result<ExitCode> {
     }
     if !no_nevo.is_empty() {
         println!(
-            "\nno nevo code, so not counted in nutrition ({}; see `grocery nevo suggest`):",
+            "\nno nevo or custom entry, so not counted in nutrition ({}; see `grocery nevo suggest`, or `grocery custom add`):",
             no_nevo.len()
         );
         for (name, users) in &no_nevo {
             println!("  {name:<24} {}", users.join(", "));
         }
     }
-    Ok(if errors.is_empty() {
+    Ok(if errors.is_empty() && dangling.is_empty() {
         ExitCode::SUCCESS
     } else {
         ExitCode::FAILURE
