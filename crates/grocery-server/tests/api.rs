@@ -664,3 +664,230 @@ async fn people_and_plans() {
         .await;
     assert_eq!(plan, json!([]));
 }
+
+#[tokio::test]
+async fn recipes_can_be_created_and_edited() {
+    let f = Fixture::new();
+    let source = json!({
+        "title": "Tomatensoep",
+        "servings": 2,
+        "time": "30 min",
+        "tags": ["soep"],
+        "extra": "author: Oma",
+        "body": "Kook @tomaat{500%g} en @ui{1} met ~{20%minutes}.",
+    });
+
+    // Check before saving: parse result, and which ingredients are new.
+    let (status, check) = f
+        .json(
+            Method::POST,
+            "/api/recipe-check",
+            Some(json!({ "source": source })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(check["error"], Value::Null);
+    assert_eq!(check["steps"], 1);
+    assert_eq!(check["timers_seconds"], 1200.0);
+    let by_name = |n: &str| {
+        check["ingredients"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == n)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(by_name("tomaat")["status"], "unknown");
+    assert_eq!(by_name("tomaat")["amount"], "500 g");
+    assert_eq!(by_name("ui")["status"], "known");
+    assert_eq!(by_name("ui")["food"], "onion");
+    assert_eq!(by_name("ui")["nutrition"], "nevo");
+    assert_eq!(by_name("ui")["weight"], "ok");
+
+    let (_, bad) = f
+        .json(
+            Method::POST,
+            "/api/recipe-check",
+            Some(json!({ "source": { "title": "x", "body": "Add @&flour{1%g}." } })),
+        )
+        .await;
+    assert!(bad["error"].as_str().unwrap().contains("flour"), "{bad}");
+
+    // Create in a new folder; it's indexed at once.
+    let (status, saved) = f
+        .json(
+            Method::POST,
+            "/api/recipe-files",
+            Some(json!({ "folder": "Soep", "source": source })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{saved}");
+    assert_eq!(saved["path"], "Soep/Tomatensoep.cook");
+    let (_, found) = f
+        .json(Method::GET, "/api/recipes?q=tomatensoep", None)
+        .await;
+    assert_eq!(found[0]["path"], "Soep/Tomatensoep.cook");
+    let (_, folders) = f.json(Method::GET, "/api/recipe-folders", None).await;
+    assert_eq!(folders, json!(["Soep"]));
+    let on_disk =
+        std::fs::read_to_string(f.app.library.recipes_dir().join("Soep/Tomatensoep.cook")).unwrap();
+    assert!(
+        on_disk.starts_with(
+            "---\ntitle: Tomatensoep\nservings: 2\ntime: 30 min\ntags: [soep]\nauthor: Oma\n---\n"
+        ),
+        "{on_disk}"
+    );
+
+    // Never overwrites; mistakes are clear errors.
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/recipe-files",
+            Some(json!({ "folder": "Soep", "source": source })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT);
+    for (folder, title) in [("../outside", "x"), ("", "../x"), (".git", "x")] {
+        let (status, _) = f
+            .json(
+                Method::POST,
+                "/api/recipe-files",
+                Some(json!({ "folder": folder, "source": { "title": title, "body": "Cook." } })),
+            )
+            .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST, "{folder:?} {title:?}");
+    }
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/recipe-files",
+            Some(json!({ "source": { "title": "Broken", "body": "Add @&flour{1%g}." } })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(!f.app.library.recipes_dir().join("Broken.cook").exists());
+
+    // Read back as fields, edit, and a stale version is refused.
+    let (status, got) = f
+        .json(Method::GET, "/api/recipe-files/Soep/Tomatensoep.cook", None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["source"]["tags"], json!(["soep"]));
+    let version = got["version"].clone();
+    let mut edited = got["source"].clone();
+    edited["servings"] = json!(4);
+    let (status, _) = f
+        .json(
+            Method::PUT,
+            "/api/recipe-files/Soep/Tomatensoep.cook",
+            Some(json!({ "source": edited, "version": version })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let (_, shown) = f
+        .json(Method::GET, "/api/recipes/Soep/Tomatensoep.cook", None)
+        .await;
+    assert_eq!(shown["servings"], 4.0);
+    let (status, err) = f
+        .json(
+            Method::PUT,
+            "/api/recipe-files/Soep/Tomatensoep.cook",
+            Some(json!({ "source": edited, "version": version })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{err}");
+    let (status, _) = f
+        .json(
+            Method::PUT,
+            "/api/recipe-files/Nope.cook",
+            Some(json!({ "source": edited, "version": "x" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn foods_can_be_added() {
+    let f = with_nevo();
+    let aliases = f.app.library.aliases_path();
+    let before = std::fs::read_to_string(&aliases).unwrap();
+
+    // NEVO search to find a code.
+    let (status, hits) = f
+        .json(Method::GET, "/api/nevo/search?q=boerenkool", None)
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        hits.as_array().unwrap().iter().any(|h| h["code"] == 2),
+        "{hits}"
+    );
+
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/foods",
+            Some(json!({
+                "name": "tomaat", "aisle": "groente", "synonyms": ["tomaten"],
+                "nevo": 1, "piece_g": 120
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let text = std::fs::read_to_string(&aliases).unwrap();
+    assert!(
+        text.starts_with(&before),
+        "the rest of the file is untouched"
+    );
+    assert!(text.contains("  tomaat:\n    nevo: 1"), "{text}");
+    assert!(text.contains("# Ui rauw") || text.contains("# "), "{text}");
+
+    // Own values go to custom.yaml and are used from the food.
+    let (status, added) = f
+        .json(
+            Method::POST,
+            "/api/foods",
+            Some(json!({
+                "name": "tahini",
+                "own": { "per": "100g", "source": "jar", "energy_kcal": 600, "protein": 17 },
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{added}");
+    assert_eq!(added["own_values"], true);
+    let custom = std::fs::read_to_string(f.app.library.custom_path()).unwrap();
+    assert!(custom.contains("tahini"), "{custom}");
+    let (_, foods) = f.json(Method::GET, "/api/foods", None).await;
+    let tahini = foods
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|x| x["name"] == "tahini")
+        .unwrap();
+    assert_eq!(tahini["custom"], "tahini");
+
+    // Mistakes change nothing.
+    let snapshot = (
+        std::fs::read_to_string(&aliases).unwrap(),
+        std::fs::read_to_string(f.app.library.custom_path()).unwrap(),
+    );
+    for body in [
+        json!({ "name": "tomaten", "negligible": true }), // already known
+        json!({ "name": "x", "nevo": 999999 }),           // not in NEVO
+        json!({ "name": "y", "custom": "nope" }),         // not in custom.yaml
+        json!({ "name": "z", "nevo": 1, "negligible": true }), // two sources
+        json!({ "name": "w", "density": -1 }),            // nonsense number
+        json!({ "name": "v", "own": { "energy_kcal": -5 } }), // bad own values
+        json!({ "name": "u", "units": { "tl": 3 } }),     // fixed-size unit
+    ] {
+        let (status, err) = f.json(Method::POST, "/api/foods", Some(body.clone())).await;
+        assert!(status.is_client_error(), "{body}: {status} {err}");
+    }
+    assert_eq!(
+        snapshot,
+        (
+            std::fs::read_to_string(&aliases).unwrap(),
+            std::fs::read_to_string(f.app.library.custom_path()).unwrap()
+        )
+    );
+}

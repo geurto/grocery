@@ -67,6 +67,41 @@ impl Library {
         parse::recipe_files(&dir)
     }
 
+    /// Folders under `Recipes/` (nested ones as `Diner/Soep`), sorted.
+    pub fn recipe_folders(&self) -> Result<Vec<String>> {
+        fn walk(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<()> {
+            let mut dirs: Vec<_> = std::fs::read_dir(dir)
+                .map_err(|e| Error::io(dir, e))?
+                .filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| p.is_dir())
+                .collect();
+            dirs.sort();
+            for d in dirs {
+                let Some(name) = d.file_name().map(|n| n.to_string_lossy().into_owned()) else {
+                    continue;
+                };
+                if name.starts_with('.') {
+                    continue;
+                }
+                let rel = if prefix.is_empty() {
+                    name
+                } else {
+                    format!("{prefix}/{name}")
+                };
+                out.push(rel.clone());
+                walk(&d, &rel, out)?;
+            }
+            Ok(())
+        }
+        let dir = self.recipes_dir();
+        let mut out = Vec::new();
+        if dir.is_dir() {
+            walk(&dir, "", &mut out)?;
+        }
+        out.sort();
+        Ok(out)
+    }
+
     /// `path` relative to `Recipes/`, with `/` separators: the key the
     /// recipe index and the web API use.
     pub fn relative(&self, path: &Path) -> Option<String> {

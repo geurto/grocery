@@ -9,7 +9,7 @@
   import { api, HttpError, OfflineError } from '../lib/api';
   import { copyText } from '../lib/device';
   import { draft } from '../lib/draft.svelte';
-  import { router } from '../lib/router.svelte';
+  import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
   import type { Recipe } from '../lib/types';
 
@@ -179,6 +179,7 @@
         </button>
       {/if}
       <button class="btn" class:primary={!stepCount} onclick={addToDraft}>{inDraft ? 'Go to new list' : 'Add to a new list'}</button>
+      <a class="btn" href={href({ name: 'recipe-edit', path })}>Edit</a>
       <button class="btn" onclick={copyMarkdown}>Copy as Markdown</button>
       {#if nutrition === null}
         <button class="btn" onclick={showNutrition}>Nutrition</button>

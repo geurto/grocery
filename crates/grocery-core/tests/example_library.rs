@@ -32,10 +32,7 @@ fn every_example_recipe_parses() {
 /// no expectations beyond that.
 #[test]
 fn every_recipe_in_the_library_parses() {
-    let lib = Library::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../library"
-    ));
+    let lib = Library::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../library"));
     let (_, errors) = lib.parser.parse_dir(&lib.recipes_dir()).unwrap();
     assert!(errors.is_empty(), "{errors:?}");
     lib.food_db().unwrap();

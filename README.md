@@ -119,6 +119,30 @@ DELETE /api/plan/{id}
 GET    /api/plan/nutrition?person=&from=&to=  per-day totals (JSON, with the NEVO citation)
 ```
 
+Writing to the library (what the app's editor uses):
+
+```
+POST   /api/recipe-check                      {"source"} → parse result, ingredients vs aliases.yaml
+GET    /api/recipe-folders                    folders under Recipes/
+GET    /api/recipe-files/{path}               {"source", "version"}: a recipe as editor fields
+POST   /api/recipe-files                      {"folder"?, "source"} → 201 {"path"}; 409 if it exists
+PUT    /api/recipe-files/{path}               {"source", "version"}; 409 if the file changed meanwhile
+GET    /api/foods                             what aliases.yaml knows
+POST   /api/foods                             {"name", "aisle"?, "synonyms"?, "nevo"? | "custom"? |
+                                               "own"? | "negligible"?, "piece_g"?, "density"?, "units"?}
+GET    /api/aisles
+GET    /api/nevo/search?q=&limit=             NEVO foods by name (409 until imported)
+```
+
+`source` is `{title, servings, time, tags, extra, body}`: the recipe's
+front matter as fields (`extra` is any other front matter, as YAML) and the
+method as Cooklang. Every write is built as text, parsed again, and only then
+saved: a new recipe never overwrites a file, an edit is refused (409) if the
+file was changed since you opened it, a food is appended to `aliases.yaml`
+(and its own values to `custom.yaml`) without touching the rest of the file,
+and a mistake changes nothing. **The service can now write to your library**,
+and it has no authentication: keep it on localhost or a private network.
+
 A recipe's JSON has a `display` part for showing it: scaled ingredient
 lines, the stated time and the sum of its timers, and the method as steps
 whose `items` keep ingredients (with this step's amount, scaled), cookware
@@ -186,6 +210,23 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
 - **New list**: search recipes by title, tag or ingredient, set servings,
   and make the list.
 - **Recipes**: by folder (`Diner/`, `Ontbijt/`), searchable.
+- **New recipe / Edit**: fields for title, folder, servings, time and tags,
+  and the method in Cooklang. Buttons insert `@ingredient{amount%unit}`,
+  `~{10%minutes}` and `#cookware{}` from a small form, so you don't type the
+  braces on a phone. While you type, the recipe is checked against your food
+  list: ingredients that aren't there yet get an **Add food** button right
+  there. A recipe that doesn't parse can't be saved, and the message says
+  where. What you typed survives a reload (a draft kept on the phone), and
+  saving is refused if the file changed on disk meanwhile. It writes a plain
+  `.cook` file in `Recipes/`, so the usual `git commit` applies. A recipe's
+  other front matter (author, source, …) is kept as it was.
+- **Add food** (from the editor, or the *Foods* screen): name and other
+  names, aisle, and where nutrition comes from: **NEVO** (search by Dutch or
+  English name, with kcal to tell raw from cooked), **your own values** (the
+  numbers on the package, stored in `custom.yaml`), **negligible** (a pinch of
+  dried herbs), or later. Optionally a piece weight, a density (so el, tl and
+  ml become grams) and other units. It's appended to `Food/aliases.yaml` with
+  a comment naming the NEVO food, leaving the rest of the file as it was.
 - **Recipe**: scaled ingredients; the method with each step's amounts in
   place and timers as chips; time; nutrition per serving.
 - **Cooking mode** ("Start cooking"): big steps, one highlighted at a time;
@@ -436,6 +477,8 @@ the real export is only read by an ignored test
 
 ## Ideas
 
+- Renaming or deleting a recipe, and changing or removing a food, from the
+  app (editing a recipe's content works; those are still done in the files).
 - Single foods in a plan ("a banana", "150 g yoghurt") next to recipes.
 - Moving a plan entry to another day (the API can; the app can't yet).
 - Recipe times in the recipe list (needs the time in the index).

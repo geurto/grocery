@@ -10,6 +10,7 @@
 //! network (Tailscale, WireGuard), or put an authenticating proxy in front.
 
 pub mod api;
+mod edit;
 mod plans;
 pub mod web;
 
