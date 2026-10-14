@@ -271,6 +271,13 @@ Then point a food in `aliases.yaml` at it, instead of a NEVO code:
   nutrient code NEVO doesn't have is called out in the report (typo?).
 - `grocery check` lists foods with neither a `nevo` nor a `custom` entry, and
   `custom:` names that aren't in the file.
+- **Negligible foods.** Dried herbs and spices used by the pinch aren't worth
+  looking up. Mark them `negligible: true` in `aliases.yaml` (instead of
+  `nevo:`/`custom:`): they're left out of nutrition, don't count towards
+  coverage, don't put a `*` on totals, and the report just lists them under
+  "Negligible, left out". `check` and `nevo suggest` stop asking about them.
+  If a food does matter in larger amounts (say, a whole tablespoon of paprika),
+  give it a `custom:` entry instead.
 - For a homemade mix, prefer a recipe over typed-in numbers (they'd go stale
   when the recipe changes). Recipe references aren't expanded yet.
 

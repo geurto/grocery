@@ -113,6 +113,8 @@ pub enum Status {
     NevoNotFound { code: u32, grams: Option<f64> },
     /// `custom:` names a food that isn't in `Food/custom.yaml`.
     CustomNotFound { name: String, grams: Option<f64> },
+    /// Marked `negligible` in aliases.yaml: left out on purpose.
+    Negligible,
     /// Mapped, but the amount can't be converted ("1 blik" with no weight).
     NoWeight { unit: String },
     /// "to taste" or a text amount.
@@ -254,6 +256,9 @@ fn classify(name: &str, amount: &Amount, db: &FoodDb, table: &CompositionTable) 
         return Status::NotInAliases { grams };
     };
     let info: &FoodInfo = resolved.info;
+    if info.negligible {
+        return Status::Negligible;
+    }
     let grams = FoodDb::grams(info, &q);
     // `FoodDb` rejects a food with both, so at most one of these is set.
     let key = match (info.nevo, &info.custom) {
@@ -478,6 +483,7 @@ pub fn render_text(
     let mut no_weight = Vec::new();
     let mut unquantified = Vec::new();
     let mut optional = Vec::new();
+    let mut negligible = Vec::new();
     for l in &n.lines {
         let amount = fmt_amount(&l.amount);
         match &l.status {
@@ -508,6 +514,7 @@ pub fn render_text(
             )),
             Status::Unquantified => unquantified.push(l.name.clone()),
             Status::Optional => optional.push(l.name.clone()),
+            Status::Negligible => negligible.push(l.name.clone()),
         }
     }
     for (label, items) in [
@@ -530,6 +537,9 @@ pub fn render_text(
             "Optional, left out: {} (use --with-optional)",
             optional.join(", ")
         );
+    }
+    if !negligible.is_empty() {
+        let _ = writeln!(out, "Negligible, left out: {}", negligible.join(", "));
     }
     if !gaps.is_empty() {
         let _ = writeln!(out, "* lower bound; no value for:");
@@ -658,6 +668,7 @@ mod tests {
              \x20 formula: { nevo: 4 }\n\
              \x20 tomato: { nevo: 99 }\n\
              \x20 herbs: {}\n\
+             \x20 thyme: { negligible: true }\n\
              \x20 garlic: { nevo: 2 }\n",
             Path::new("aliases.yaml"),
         )
@@ -775,6 +786,22 @@ mod tests {
             },
         );
         assert_eq!(with_opt.per_serving("ENERCC").unwrap().0, 390.0);
+    }
+
+    #[test]
+    fn negligible_foods_are_left_out_quietly() {
+        let r = recipe(
+            None,
+            &[
+                ("pasta", v(100.0, Some("g")), false),
+                ("thyme", v(2.0, Some("g")), false),
+            ],
+        );
+        let n = compute(&r, &db(), &table(), Options::default());
+        assert_eq!(n.lines[1].status, Status::Negligible);
+        // Not counted, and doesn't dilute coverage or mark totals as lower bounds.
+        assert_eq!(n.weights(), (100.0, 100.0));
+        assert!(n.totals.values().all(|t| t.missing_in.is_empty()));
     }
 
     #[test]

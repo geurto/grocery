@@ -10,6 +10,8 @@
 //!   onion:
 //!     nevo: 63             # NEVO code ("Ui rauw"); `grocery nevo suggest` helps
 //!                          # (or `custom: <name>` for a food in custom.yaml)
+//!   dried thyme:
+//!     negligible: true     # left out of nutrition, not flagged
 //!     piece_g: 110         # weight of one piece (shorthand for units: {pc: 110})
 //!     aisle: groente & fruit
 //!     synonyms: [onions, ui, uien]
@@ -36,6 +38,11 @@ pub struct FoodInfo {
     /// Name of a food in `Food/custom.yaml`, for nutrition values NEVO
     /// doesn't have. Not together with `nevo`.
     pub custom: Option<String>,
+    /// Too small to matter nutritionally (dried herbs, a pinch of spice):
+    /// left out of nutrition without being flagged. Not together with
+    /// `nevo` or `custom`.
+    #[serde(default)]
+    pub negligible: bool,
     /// Grams per piece.
     pub piece_g: Option<f64>,
     /// Grams per millilitre.
@@ -113,6 +120,14 @@ impl FoodDb {
                 return Err(Error::Config {
                     path: path.into(),
                     message: format!("'{name}' has both `nevo` and `custom`; use one"),
+                });
+            }
+            if info.negligible && (info.nevo.is_some() || info.custom.is_some()) {
+                return Err(Error::Config {
+                    path: path.into(),
+                    message: format!(
+                        "'{name}' is `negligible` but also has `nevo` or `custom`; use one"
+                    ),
                 });
             }
             // Named units are matched on their normalized key.

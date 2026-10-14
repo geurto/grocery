@@ -3,13 +3,104 @@
 # package doesn't list: missing means unknown, not 0.
 foods:
   fresh coriander:
-    source: USDA FoodData Central, "Coriander (cilantro) leaves, raw" (example values)
-    energy_kcal: 23
-    protein: 2.13
-    fat: 0.52
-    saturated_fat: 0.014
-    carbohydrate: 3.67
-    sugars: 0.87
-    fibre: 2.8
+    source: Voedingscentrum 
+    energy_kcal: 37
+    protein: 4
+    fat: 0.8
+    saturated_fat: 0.1
+    carbohydrate: 1
+    sugars: 0
+    fibre: 5
     sodium_mg: 46
     nutrients: { VITC: 27 }
+  thai basil:
+    source: Albert Heijn
+    energy_kcal: 48.0
+    protein: 3.1
+    fat: 0.8
+    saturated_fat: 0.2
+    carbohydrate: 5.1
+    sugars: 5.1
+    fibre: 3.9
+    salt: 0.03
+  taco seasoning:
+    source: Jumbo
+    energy_kcal: 297.0
+    protein: 10.0
+    fat: 6.0
+    saturated_fat: 0.7
+    carbohydrate: 44.0
+    sugars: 20.0
+    fibre: 12.0
+    salt: 15.8
+  bomba rice:
+    source: Sligro
+    energy_kcal: 344.0
+    protein: 7.0
+    fat: 0.68
+    saturated_fat: 0.14
+    carbohydrate: 76.9
+    sugars: 0.22
+    fibre: 3.1
+    salt: 0.01
+  coriander:
+    source: Voedingscentrum
+    energy_kcal: 372.0
+    protein: 12.0
+    fat: 18.0
+    saturated_fat: 1.0
+    carbohydrate: 26.0
+    sugars: 5.0
+    fibre: 42.0
+    salt: 0.0
+  coconut sugar:
+    source: package
+    energy_kcal: 390.0
+    protein: 1.0
+    fat: 0.0
+    saturated_fat: 0.0
+    carbohydrate: 94.0
+    sugars: 94.0
+    fibre: 0.0
+    salt: 0.01
+  kalamata olives:
+    source: Albert Heijn
+    energy_kcal: 232.0
+    protein: 1.5
+    fat: 24.0
+    saturated_fat: 2.7
+    carbohydrate: 3.1
+    sugars: 0.4
+    fibre: 2.6
+    salt: 3.4
+  broth:
+    per: 100ml
+    source: Albert Heijn
+    energy_kcal: 6.0
+    protein: 1.6
+    fat: 0.2
+    saturated_fat: 0.07
+    carbohydrate: 0.5
+    sugars: 2.0
+    fibre: 0.0
+    salt: 1.0
+  chipotle peppers in adobo sauce:
+    source: La Morena
+    energy_kcal: 100.0
+    protein: 0.5
+    fat: 4.5
+    saturated_fat: 0.0
+    carbohydrate: 12.0
+    sugars: 9.0
+    fibre: 3.0
+    salt: 0.33
+  nduja:
+    source: Albert Heijn
+    energy_kcal: 534.0
+    protein: 5.9
+    fat: 52.0
+    saturated_fat: 21.0
+    carbohydrate: 7.3
+    sugars: 1.8
+    fibre: 0.0
+    salt: 1.9

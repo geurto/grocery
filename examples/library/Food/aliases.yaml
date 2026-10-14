@@ -18,36 +18,126 @@ aisles:
   - vlees & vis
   - zuivel & eieren
   - kaas
+  - plantaardig 
   - pasta, rijst & wereldkeuken
   - conserven & sauzen
   - kruiden & specerijen
+  - ontbijt & bakproducten
   - olie & azijn
 
 foods:
+  ### groente & fruit ###
   onion:
     nevo: 63            # Ui rauw
     piece_g: 110
     aisle: groente & fruit
     synonyms: [ui, uien, yellow onion]
+  red onion:
+    nevo: 5459
+    aisle: groente & fruit
+    synonyms: [rode ui, rode uien]
   garlic:
     nevo: 830           # Knoflook rauw
     units: { clove: 5, teen: 5, tenen: 5 }
     aisle: groente & fruit
     synonyms: [knoflook]
+  tomato:
+    nevo: 2734
+    aisle: groente & fruit
+    synonyms: [tomaten, verse tomaten, romatomaten, pruimtomaten, cherrytomaten]
+  red chili:
+    nevo: 2524
+    aisle: groente & fruit
+    synonyms: [rode peper, verse rode peper, groene peper]
   red bell pepper:
     nevo: 884           # Paprika rode rauw
     piece_g: 160
     aisle: groente & fruit
-    synonyms: [rode paprika]
-  floury potato:
-    nevo: 1             # Aardappelen rauw (weighed raw, as bought)
+    synonyms: [rode paprika, rode puntpaprika]
+  yellow bell pepper:
+    nevo: 2740
+    piece_g: 160
     aisle: groente & fruit
-    synonyms: [kruimige aardappelen, aardappelen]
+    synonyms: [gele paprika, gele puntpaprika]
+  green bell pepper:
+    nevo: 31
+    piece_g: 160
+    aisle: groente & fruit
+    synonyms: [groene paprika, groene puntpaprika]
+  bell pepper:
+    nevo: 2742
+    piece_g: 160
+    aisle: groente & fruit
+    synonyms: [paprika, puntpaprika, paprika mix, puntpaprika mix]
+  courgette:
+    nevo: 922
+    aisle: groente & fruit
+    synonyms: [zucchini]
   kale:
     nevo: 959           # Kool boeren- rauw
     aisle: groente & fruit
     synonyms: [boerenkool]
-  coriander:
+  avocado:
+    nevo: 689
+    aisle: groente & fruit
+  aubergine:
+    nevo: 10
+    aisle: groente & fruit
+    synonyms: [eggplant]
+  spinach:
+    nevo: 51
+    aisle: groente & fruit
+    synonyms: [spinazie, rauwe spinazie]
+  cabbage, pointed:
+    nevo: 53
+    aisle: groente & fruit
+    synonyms: [spitskool]
+  carrot:
+    nevo: 2728 
+    aisle: groente & fruit
+    synonyms: [wortel, winterpeen, peen]
+  fennel:
+    nevo: 849
+    aisle: groente & fruit
+    synonyms: [venkel]
+  chickpeas:
+    nevo: 5430
+    aisle: groente & fruit
+    synonyms: [kikkererwten]
+  black beans:
+    nevo: 5176
+    aisle: groente & fruit
+    synonyms: [zwarte bonen]
+  broad beans:
+    nevo: 62
+    aisle: groente & fruit
+    synonyms: [tuinbonen]
+  green beans:
+    nevo: 50
+    aisle: groente & fruit
+    synonyms: [sperziebonen]
+  bean sprouts:
+    nevo: 58
+    aisle: groente & fruit
+    synonyms: [taugé, tauge]
+  cucumber:
+    nevo: 2739
+    aisle: groente & fruit
+    synonyms: [komkommer]
+  rocket:
+    nevo: 2736
+    aisle: groente & fruit
+    synonyms: [rucola, arugola]
+  floury potato:
+    nevo: 1             # Aardappelen rauw (weighed raw, as bought)
+    aisle: groente & fruit
+    synonyms: [kruimige aardappelen, aardappelen, krieltjes]
+  ## verse kruiden
+  parsley:
+    nevo: 128
+    aisle: groente & fruit
+    synonyms: [peterselie, verse peterselie]
+  fresh coriander:
     custom: fresh coriander   # not in NEVO 2025/9.0: own values, see custom.yaml
     aisle: groente & fruit
     synonyms: [verse koriander, cilantro]
@@ -55,13 +145,32 @@ foods:
     nevo: 2177          # Basilicum vers
     aisle: groente & fruit
     synonyms: [basilicum]
+  thai basil:
+    custom: thai basil
+    aisle: groente & fruit
+    synonyms: [holy basil, thaise basilicum]
+  ginger:
+    nevo: 832
+    aisle: groente & fruit
+    synonyms: [gember, verse gember, gemberwortel]
+  ## fruit
+  lime:
+    nevo: 691
+    aisle: groente & fruit
+    synonyms: [limoen]
+  lemon:
+    nevo: 158
+    aisle: groente & fruit
+    synonyms: [citroen]
 
+  ### vlees & vis ###
   smoked sausage:
     nevo: 324           # Worst rook- gekookt gem (sold pre-cooked)
     piece_g: 275
     aisle: vlees & vis
     synonyms: [rookworst]
 
+  ### zuivel & eieren ### 
   egg:
     nevo: 83            # Ei kippen- rauw gem
     piece_g: 55
@@ -76,7 +185,12 @@ foods:
     nevo: 310           # Boter ongezouten (879 = gezouten)
     aisle: zuivel & eieren
     synonyms: [roomboter]
+  greek yoghurt, full-fat:
+    nevo: 2503
+    aisle: zuivel & eieren
+    synonyms: [volle griekse yoghurt, griekse yoghurt]
 
+  ### kaas ###
   feta:
     nevo: 3362          # Kaas Feta
     aisle: kaas
@@ -84,35 +198,198 @@ foods:
     nevo: 718           # Kaas Parmezaanse
     aisle: kaas
     synonyms: [parmezaan, parmigiano]
+  mozzarella:
+    nevo: 1955
+    aisle: kaas
 
+  ### plantaardig ###
+  tempeh:
+    nevo: 5573
+    aisle: plantaardig
+  tofu:
+    nevo: 5519
+    aisle: plantaardig
+    synonyms: [stevige tofu, zachte tofu, gerookte tofu]
+
+  ### pasta, rijst & wereldkeuken ###
   spaghetti:
     nevo: 4             # Pasta witte rauw (dry)
     aisle: pasta, rijst & wereldkeuken
+  gnocchi:
+    nevo: 5418
+    aisle: pasta, rijst & wereldkeuken
+  white rice:
+    nevo: 5
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [rijst, witte rijst, snelkookrijst, jasmijnrijst]
+  brown rice:
+    nevo: 712 
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [zilvervliesrijst]
+  bomba rice:
+    custom: bomba rice
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [paella rijst, bomba rijst]
+  dried lentils:
+    nevo: 5169
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [gedroogde linzen, gedroogde rode linzen, gedroogde groene linzen, gedroogde bruine linzen]
+  tortilla, whole wheat:
+    nevo: 5482
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [volkoren tortilla, volkoren tortilla's]
+  tortilla:
+    nevo: 2359
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [tortilla, tortilla's]
+
+  ### conserven & sauzen
+  oyster sauce:
+    nevo: 5153
+    aisle: conserven & sauzen
+    synonyms: [oestersaus]
+  soy sauce:
+    nevo: 5470
+    aisle: conserven & sauzen
+    synonyms: [sojasaus]
+  sweet ketjap soy sauce:
+    nevo: 1215
+    aisle: conserven & sauzen
+    synonyms: [ketjap, ketjap manis]
+  sambal oelek:
+    nevo: 1232
+    aisle: conserven & sauzen
+    synonyms: [sambal]
+  coconut milk:
+    nevo: 2290
+    aisle: conserven & sauzen
+    synonyms: [kokosmelk]
+  fried onions:
+    nevo: 1393
+    aisle: conserven & sauzen
+    synonyms: [gebakken uitjes, gebakken uien]
   passata:
     nevo: 2498          # Tomaat gezeefd pak
     aisle: conserven & sauzen
     synonyms: [gezeefde tomaten]
+  tomato puree:
+    nevo: 141
+    aisle: conserven & sauzen
+    synonyms: [tomatenpuree]
+  diced tomatoes:
+    nevo: 2293          # Tomaat in blik
+    aisle: conserven & sauzen
+    synonyms: [tomatenblokjes, tomaat in blik, tomaten in blik]
+  chipotle peppers in adobo sauce:
+    custom: chipotle peppers in adobo sauce
+    aisle: conserven & sauzen
+    synonyms: [chipotle peper in adobosaus]
+  nduja:
+    custom: nduja
+    aisle: conserven & sauzen
+  kalamata olives:
+    custom: kalamata olives
+    aisle: conserven & sauzen
+    synonyms: [kalamata olijven]
+  artichoke hearts, canned:
+    nevo: 3331
+    aisle: conserven & sauzen
+    synonyms: [artisjokharten]
+  stock cube:
+    nevo: 429
+    aisle: conserven & sauzen
+    synonyms: [bouillonblok, bouillonblokje, vega bouillon, kippenbouillon, runderbouillon]
+  broth:
+    custom: broth
+    aisle: conserven & sauzen
+    synonyms: [fond, gevogeltefond, runderfond, groentefond, paddenstoelenfond]
+  sherry:
+    nevo: 409
+    aisle: conserven & sauzen
+    synonyms: [droge sherry, medium sherry]
 
+  ### kruiden & specerijen ###
   cumin:
     nevo: 827           # Komijnzaad gedroogd
     density: 0.45       # ground spice, ~2 g per tl
     aisle: kruiden & specerijen
-    synonyms: [komijn]
+    synonyms: [komijn, komijnzaad]
+  coriander:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [korianderpoeder, gemalen koriander, koriander]
   chili flakes:
     nevo: 1221          # Chilipoeder (closest match)
     density: 0.4
     aisle: kruiden & specerijen
     synonyms: [chilivlokken]
+  chili powder:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [chilipoeder, cayennepeper]
+  paprika powder:
+    nevo: 1229
+    aisle: kruiden & specerijen
+    synonyms: [paprikapoeder, pittige paprikapoeder, gerookte paprikapoeder]
+  turmeric:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [kurkuma]
+  garam masala:
+    negligible: true
+    aisle: kruiden & specerijen
+  saffron:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [saffraan]
+  fennel seed:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [venkelzaad, fennel seeds]
+  bay leaf:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [laurierblad, laurierbladen]
+  dried thyme:
+    negligible: true
+    aisle: kruiden & specerijen
+    synonyms: [gedroogde tijm]
+  taco seasoning:
+    custom: taco seasoning
+    aisle: kruiden & specerijen
+    synonyms: [tacokruiden, taco kruidenmix]
 
+  ### ontbijt & bakproducten ###
+  peanut butter:
+    nevo: 455
+    aisle: ontbijt & bakproducten
+    synonyms: [pindakaas]
+  coconut sugar:
+    custom: coconut sugar
+    aisle: ontbijt & bakproducten
+    synonyms: [kokossuiker, kokosbloesemsuiker]
+
+  ### olie & azijn ###
   olive oil:
     nevo: 601           # Olie olijf-
     density: 0.91
     aisle: olie & azijn
     synonyms: [olijfolie]
+  sunflower oil:
+    nevo: 317 
+    aisle: olie & azijn
+    synonyms: [zonnebloemolie, geurloze olie]
+  balsamic vinegar:
+    nevo: 5253
+    aisle: olie & azijn
+    synonyms: [balsamico azijn]
 
+  ### pantry ### 
   salt:
     nevo: 841           # Zout m toegevoegd jodium
     synonyms: [zout]
   black pepper:
     nevo: 823           # Peper zwarte/witte
     synonyms: [peper, zwarte peper]
+  water:
+    nevo: 598

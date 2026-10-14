@@ -310,7 +310,11 @@ fn check(library: &Library) -> Result<ExitCode> {
         for ing in &r.ingredients {
             let users = match db.resolve(&ing.name) {
                 None => unmapped.entry(ing.name.to_lowercase()).or_default(),
-                Some(res) if res.info.nevo.is_none() && res.info.custom.is_none() => {
+                Some(res)
+                    if res.info.nevo.is_none()
+                        && res.info.custom.is_none()
+                        && !res.info.negligible =>
+                {
                     no_nevo.entry(res.canonical).or_default()
                 }
                 Some(_) => continue,

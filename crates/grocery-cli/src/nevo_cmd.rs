@@ -214,7 +214,7 @@ pub fn suggest(library: &Library, db: &Path, limit: usize) -> Result<ExitCode> {
     let foods = library.food_db()?;
     let missing: Vec<_> = foods
         .foods()
-        .filter(|(_, info)| info.nevo.is_none() && info.custom.is_none())
+        .filter(|(_, info)| info.nevo.is_none() && info.custom.is_none() && !info.negligible)
         .collect();
     if missing.is_empty() {
         println!("every food in Food/aliases.yaml has a nevo code");
