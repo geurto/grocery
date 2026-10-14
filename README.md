@@ -13,7 +13,7 @@ crates/
                    md/txt exports, and serves the web app
   grocery-cli/     the `grocery` binary (including `grocery serve`)
 web/               the web app: Svelte 5 + TypeScript, built with Vite
-examples/library/  a library to try it on (your recipes; they only need to parse)
+library/           your recipes and food data
 tests/fixtures/library/  the fixed library the tests run against
 ```
 
@@ -24,7 +24,7 @@ tests/fixtures/library/  the fixed library the tests run against
 ```sh
 cargo test --workspace
 (cd web && npm ci && npm test)
-export GROCERY_LIBRARY=examples/library        # or pass --library
+export GROCERY_LIBRARY=library                 # or pass --library
 cargo run -q -- check
 cargo run -q -- list "Pasta arrabbiata=2" Shakshuka            # Markdown
 cargo run -q -- list --plain Shakshuka                         # for Signal
@@ -235,7 +235,7 @@ Home Screen" (iOS: Share menu; Android: browser menu).
 ### Developing the app
 
 ```sh
-cargo run -- --library examples/library serve   # API on :8080
+cargo run -- --library library serve   # API on :8080
 cd web && npm run dev                           # app on :5173, /api proxied
 npm test          # vitest: offline sync, formatting, routes, timers, plans
 npm run check     # svelte-check (types)
@@ -336,10 +336,19 @@ Then point a food in `aliases.yaml` at it, instead of a NEVO code:
 
 ## aliases.yaml
 
-See `examples/library/Food/aliases.yaml`. Each food can have `synonyms`, an
+See `library/Food/aliases.yaml`. Each food can have `synonyms`, an
 `aisle`, and the data to convert to grams: `piece_g`, `units` (per named unit)
-and `density` (g/ml), plus `nevo:` (or `custom:`, see above) for nutrition. Typos in field names
-and a synonym listed under two foods are errors, not silent misses.
+and `density` (g/ml), plus `nevo:` (or `custom:`, see above) for nutrition.
+Typos in field names and a synonym listed under two foods are errors, not
+silent misses.
+
+**Spoons and millilitres.** `el`, `tl`, `ml`, `dl`, `cup` … are fixed volumes
+(15 ml, 5 ml, …), so the only thing a food needs to turn them into grams is
+its `density`. `density: 1.15` for soy sauce means 1 el = 17 g. There is
+deliberately no default density: oil is 0.92, honey 1.4 and ground spices
+0.4 to 0.5, so a guess of 1 would be 10 to 60% off. `units:` is for things
+that aren't a fixed size ("clove", "blik", "bos"); putting `tl` or `el`
+there is an error, because it could never be used.
 
 `grocery check` lists every ingredient name that doesn't resolve and every
 food used without a `nevo` code, with the recipes using them. That's the

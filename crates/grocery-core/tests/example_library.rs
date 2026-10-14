@@ -28,13 +28,13 @@ fn every_example_recipe_parses() {
     }
 }
 
-/// `examples/library` holds real recipes that change; they must parse, but
+/// `library/` holds real recipes that change; they must parse, but
 /// no expectations beyond that.
 #[test]
-fn every_recipe_in_examples_parses() {
+fn every_recipe_in_the_library_parses() {
     let lib = Library::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../examples/library"
+        "/../../library"
     ));
     let (_, errors) = lib.parser.parse_dir(&lib.recipes_dir()).unwrap();
     assert!(errors.is_empty(), "{errors:?}");

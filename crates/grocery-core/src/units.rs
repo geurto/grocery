@@ -50,6 +50,12 @@ fn table(unit: &str) -> Option<(Dim, f64)> {
     Some(entry)
 }
 
+/// A unit with a fixed size (g, ml, el, tl, cup, ...): its weight comes from
+/// the food's `density`, so it can't be given weights under `units:`.
+pub fn is_fixed_size(unit: &str) -> bool {
+    matches!(table(&clean_unit(unit)), Some((Dim::Mass | Dim::Volume, _)))
+}
+
 /// Lowercase, trim, drop a trailing period ("el." → "el").
 pub fn clean_unit(unit: &str) -> String {
     unit.trim().trim_end_matches('.').to_lowercase()

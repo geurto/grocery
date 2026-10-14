@@ -34,6 +34,7 @@ foods:
     synonyms: [ui, uien, yellow onion]
   red onion:
     nevo: 5459
+    piece_g: 100
     aisle: groente & fruit
     synonyms: [rode ui, rode uien]
   garlic:
@@ -47,6 +48,7 @@ foods:
     synonyms: [tomaten, verse tomaten, romatomaten, pruimtomaten, cherrytomaten]
   red chili:
     nevo: 2524
+    piece_g: 10
     aisle: groente & fruit
     synonyms: [rode peper, verse rode peper, groene peper]
   red bell pepper:
@@ -71,6 +73,7 @@ foods:
     synonyms: [paprika, puntpaprika, paprika mix, puntpaprika mix]
   courgette:
     nevo: 922
+    piece_g: 250
     aisle: groente & fruit
     synonyms: [zucchini]
   kale:
@@ -79,9 +82,11 @@ foods:
     synonyms: [boerenkool]
   avocado:
     nevo: 689
+    piece_g: 180
     aisle: groente & fruit
   aubergine:
     nevo: 10
+    piece_g: 250
     aisle: groente & fruit
     synonyms: [eggplant]
   spinach:
@@ -94,10 +99,12 @@ foods:
     synonyms: [spitskool]
   carrot:
     nevo: 2728 
+    piece_g: 100
     aisle: groente & fruit
     synonyms: [wortel, winterpeen, peen]
   fennel:
     nevo: 849
+    piece_g: 350
     aisle: groente & fruit
     synonyms: [venkel]
   chickpeas:
@@ -122,6 +129,7 @@ foods:
     synonyms: [taugé, tauge]
   cucumber:
     nevo: 2739
+    piece_g: 300
     aisle: groente & fruit
     synonyms: [komkommer]
   rocket:
@@ -156,14 +164,18 @@ foods:
   ## fruit
   lime:
     nevo: 691
+    piece_g: 60
     aisle: groente & fruit
     synonyms: [limoen]
   lemon:
     nevo: 158
+    piece_g: 100
+    density: 0.67       # juice: ~10 g per el
     aisle: groente & fruit
     synonyms: [citroen]
   banana:
     nevo: 151
+    piece_g: 100
     aisle: groente & fruit
     synonyms: [banaan, bananen]
   strawberries:
@@ -220,6 +232,7 @@ foods:
     aisle: kaas
   parmesan:
     nevo: 718           # Kaas Parmezaanse
+    density: 0.4        # grated, loosely packed
     aisle: kaas
     synonyms: [parmezaan, parmigiano]
   mozzarella:
@@ -270,18 +283,22 @@ foods:
   ### conserven & sauzen
   oyster sauce:
     nevo: 5153
+    density: 1.2        # ~18 g per el
     aisle: conserven & sauzen
     synonyms: [oestersaus]
   soy sauce:
     nevo: 5470
+    density: 1.15
     aisle: conserven & sauzen
     synonyms: [sojasaus]
   sweet ketjap soy sauce:
     nevo: 1215
+    density: 1.25       # thick and sugary: ~19 g per el
     aisle: conserven & sauzen
     synonyms: [ketjap, ketjap manis]
   sambal oelek:
     nevo: 1232
+    density: 1.05
     aisle: conserven & sauzen
     synonyms: [sambal]
   coconut milk:
@@ -321,14 +338,16 @@ foods:
     synonyms: [artisjokharten]
   stock cube:
     nevo: 429
+    piece_g: 10
     aisle: conserven & sauzen
-    synonyms: [bouillonblok, bouillonblokje, vega bouillon, kippenbouillon, runderbouillon]
+    synonyms: [bouillonblok, bouillonblokje]
   broth:
     custom: broth
     aisle: conserven & sauzen
-    synonyms: [fond, gevogeltefond, runderfond, groentefond, paddenstoelenfond]
+    synonyms: [fond, gevogeltefond, runderfond, groentefond, paddenstoelenfond, vega bouillon, kippenbouillon, runderbouillon]
   sherry:
     nevo: 409
+    density: 0.98
     aisle: conserven & sauzen
     synonyms: [droge sherry, medium sherry]
 
@@ -358,6 +377,7 @@ foods:
     synonyms: [chilipoeder, cayennepeper]
   paprika powder:
     nevo: 1229
+    density: 0.45       # ground spice, ~2 g per tl
     aisle: kruiden & specerijen
     synonyms: [paprikapoeder, pittige paprikapoeder, gerookte paprikapoeder]
   turmeric:
@@ -406,14 +426,17 @@ foods:
     synonyms: [havervlokken]
   peanut butter:
     nevo: 455
+    density: 1.07       # ~16 g per el
     aisle: ontbijt & bakproducten
     synonyms: [pindakaas]
   coconut sugar:
     custom: coconut sugar
+    density: 0.7
     aisle: ontbijt & bakproducten
     synonyms: [kokossuiker, kokosbloesemsuiker]
   cocoa powder:
     nevo: 430
+    density: 0.4        # powder: ~6 g per el
     aisle: ontbijt & bakproducten
     synonyms: [rauwe cacao, cacaopoeder]
   protein powder:
@@ -422,10 +445,12 @@ foods:
     synonyms: [eiwitpoeder, proteïnepoeder]
   almond drink:
     nevo: 5464
+    density: 1.0
     aisle: ontbijt & bakproducten
     synonyms: [amandelmelk, almond milk]
   coconut water:
     nevo: 3359
+    density: 1.0
     aisle: ontbijt & bakproducten
     synonyms: [kokoswater]
 
@@ -437,16 +462,19 @@ foods:
     synonyms: [olijfolie]
   sunflower oil:
     nevo: 317 
+    density: 0.92
     aisle: olie & azijn
     synonyms: [zonnebloemolie, geurloze olie]
   balsamic vinegar:
     nevo: 5253
+    density: 1.1
     aisle: olie & azijn
     synonyms: [balsamico azijn]
 
   ### pantry ### 
   salt:
     nevo: 841           # Zout m toegevoegd jodium
+    density: 1.2        # table salt: ~6 g per tl
     synonyms: [zout]
   black pepper:
     nevo: 823           # Peper zwarte/witte

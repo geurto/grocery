@@ -28,7 +28,7 @@ use std::path::Path;
 use serde::Deserialize;
 
 use crate::error::{Error, Result};
-use crate::units::{named_key, Dim, Normalized};
+use crate::units::{self, named_key, Dim, Normalized};
 
 #[derive(Debug, Clone, Default, Deserialize, PartialEq)]
 #[serde(deny_unknown_fields)]
@@ -127,6 +127,17 @@ impl FoodDb {
                     path: path.into(),
                     message: format!(
                         "'{name}' is `negligible` but also has `nevo` or `custom`; use one"
+                    ),
+                });
+            }
+            // `units: { tl: 3 }` would never be used: tl is a volume, so it
+            // goes through `density`. Say so instead of ignoring it.
+            if let Some(unit) = info.units.keys().find(|u| units::is_fixed_size(u)) {
+                return Err(Error::Config {
+                    path: path.into(),
+                    message: format!(
+                        "'{name}': `{unit}` under `units` is never used, it's a fixed volume or \
+                         mass. Give the food a `density` (grams per ml) instead"
                     ),
                 });
             }
@@ -315,6 +326,18 @@ foods:
         let yaml = "foods:\n  a: { synonyms: [x] }\n  b: { synonyms: [x] }\n";
         let err = FoodDb::from_yaml(yaml, Path::new("aliases.yaml")).unwrap_err();
         assert!(err.to_string().contains("'x' is listed for both"), "{err}");
+    }
+
+    #[test]
+    fn fixed_size_units_belong_under_density() {
+        for unit in ["tl", "EL", "ml", "g", "cup"] {
+            let yaml = format!("foods:\n  salt: {{ units: {{ {unit}: 3 }} }}\n");
+            let err = FoodDb::from_yaml(&yaml, Path::new("aliases.yaml")).unwrap_err();
+            assert!(err.to_string().contains("density"), "{unit}: {err}");
+        }
+        // Counting units are what `units:` is for.
+        let yaml = "foods:\n  garlic: { units: { clove: 5, pc: 60 } }\n";
+        assert!(FoodDb::from_yaml(yaml, Path::new("aliases.yaml")).is_ok());
     }
 
     #[test]
