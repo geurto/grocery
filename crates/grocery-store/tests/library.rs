@@ -1,4 +1,4 @@
-//! The recipe index and saved lists, against a copy of `examples/library`.
+//! The recipe index and saved lists, against a copy of `tests/fixtures/library`.
 
 use std::path::Path;
 
@@ -10,7 +10,7 @@ use grocery_store::{ListStatus, Store, SyncReport};
 /// A scratch copy of the example library, so tests can edit files.
 fn scratch_library() -> (tempfile::TempDir, Library) {
     let dir = tempfile::tempdir().unwrap();
-    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/library");
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/library");
     copy_dir(&src, dir.path());
     let lib = Library::new(dir.path());
     (dir, lib)

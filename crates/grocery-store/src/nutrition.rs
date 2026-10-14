@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use grocery_core::custom::CustomFoods;
 use grocery_core::food::FoodDb;
 use grocery_core::model::Recipe;
-use grocery_core::nutrition::{self, DisplayRow, Options};
+use grocery_core::nutrition::{self, CompositionTable, DisplayRow, Options};
 
 use crate::{Result, Store};
 
@@ -45,6 +45,24 @@ impl Store {
         Ok(rows)
     }
 
+    /// Compositions for every food the recipes use: NEVO's, plus the
+    /// user's own. Errors if NEVO hasn't been imported.
+    pub fn composition_table(
+        &self,
+        recipes: &[&Recipe],
+        foods: &FoodDb,
+        custom: &CustomFoods,
+    ) -> Result<CompositionTable> {
+        self.require_nevo()?;
+        let codes: BTreeSet<u32> = recipes
+            .iter()
+            .flat_map(|r| nutrition::needed_codes(r, foods))
+            .collect();
+        let mut table = self.compositions(&codes)?;
+        table.extend(custom.compositions());
+        Ok(table)
+    }
+
     /// Per-serving nutrition as text, ending with the NEVO citation the
     /// conditions of use require. `custom` supplies foods NEVO doesn't have;
     /// the report says which numbers are yours.
@@ -57,8 +75,7 @@ impl Store {
         all: bool,
     ) -> Result<String> {
         let info = self.require_nevo()?;
-        let mut table = self.compositions(&nutrition::needed_codes(recipe, foods))?;
-        table.extend(custom.compositions());
+        let table = self.composition_table(&[recipe], foods, custom)?;
         let n = nutrition::compute(recipe, foods, &table, opts);
         let rows = self.display_rows(all)?;
         let mut text = nutrition::render_text(&n, &table, &rows, &info.citation());

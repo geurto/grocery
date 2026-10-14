@@ -1,3 +1,5 @@
+import type { Meal } from './types';
+
 // Hash routing (#/list/3): every URL is index.html as far as the server and
 // the service worker are concerned, which keeps both simple.
 
@@ -5,7 +7,15 @@ export type Route =
   | { name: 'lists' }
   | { name: 'list'; id: number }
   | { name: 'new' }
-  | { name: 'recipe'; path: string; servings?: number };
+  | { name: 'recipes' }
+  | { name: 'recipe'; path: string; servings?: number }
+  | { name: 'cook'; path: string; servings?: number }
+  | { name: 'plan'; day?: string }
+  | { name: 'plan-add'; day: string; meal: Meal | null }
+  | { name: 'plan-list'; start: string };
+
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+const MEALS: readonly string[] = ['breakfast', 'lunch', 'dinner', 'snack'];
 
 export function parse(hash: string): Route {
   const [path, query = ''] = hash.replace(/^#\/?/, '').split('?');
@@ -15,13 +25,23 @@ export function parse(hash: string): Route {
     return { name: 'list', id: Number(parts[1]) };
   }
   if (parts[0] === 'new') return { name: 'new' };
-  if (parts[0] === 'recipe' && parts.length > 1) {
+  if (parts[0] === 'recipes') return { name: 'recipes' };
+  if ((parts[0] === 'recipe' || parts[0] === 'cook') && parts.length > 1) {
     const servings = Number(params.get('servings'));
     return {
-      name: 'recipe',
+      name: parts[0],
       path: parts.slice(1).map(decodeURIComponent).join('/'),
       servings: servings > 0 ? servings : undefined,
     };
+  }
+  if (parts[0] === 'plan') {
+    const day = parts[2] ?? parts[1];
+    if (parts[1] === 'add' && DAY.test(parts[2] ?? '')) {
+      const meal = params.get('meal');
+      return { name: 'plan-add', day: parts[2], meal: meal && MEALS.includes(meal) ? (meal as Meal) : null };
+    }
+    if (parts[1] === 'list' && DAY.test(parts[2] ?? '')) return { name: 'plan-list', start: parts[2] };
+    return { name: 'plan', day: DAY.test(day ?? '') ? day : undefined };
   }
   return { name: 'lists' };
 }
@@ -34,9 +54,18 @@ export function href(route: Route): string {
       return `#/list/${route.id}`;
     case 'new':
       return '#/new';
-    case 'recipe': {
+    case 'recipes':
+      return '#/recipes';
+    case 'plan':
+      return route.day ? `#/plan/${route.day}` : '#/plan';
+    case 'plan-add':
+      return `#/plan/add/${route.day}${route.meal ? `?meal=${route.meal}` : ''}`;
+    case 'plan-list':
+      return `#/plan/list/${route.start}`;
+    case 'recipe':
+    case 'cook': {
       const path = route.path.split('/').map(encodeURIComponent).join('/');
-      return `#/recipe/${path}${route.servings ? `?servings=${route.servings}` : ''}`;
+      return `#/${route.name}/${path}${route.servings ? `?servings=${route.servings}` : ''}`;
     }
   }
 }

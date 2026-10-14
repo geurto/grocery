@@ -4,6 +4,7 @@
   import Stepper from '../components/Stepper.svelte';
   import { OfflineError } from '../lib/api';
   import { draft, resetDraft } from '../lib/draft.svelte';
+  import { searchRecipes } from '../lib/recipes';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
   import type { RecipeSummary } from '../lib/types';
@@ -17,16 +18,7 @@
   });
 
   const picked = $derived(new Set(draft.picks.map((p) => p.path)));
-  const results = $derived.by(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return store.recipes;
-    return store.recipes.filter(
-      (r) =>
-        r.title.toLowerCase().includes(q) ||
-        r.tags.some((t) => t.toLowerCase().includes(q)) ||
-        r.ingredients.some((i) => i.toLowerCase().includes(q)),
-    );
-  });
+  const results = $derived(searchRecipes(store.recipes, query));
 
   function toggle(r: RecipeSummary) {
     if (picked.has(r.path)) {

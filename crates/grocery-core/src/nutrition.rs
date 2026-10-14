@@ -290,6 +290,68 @@ fn classify(name: &str, amount: &Amount, db: &FoodDb, table: &CompositionTable) 
     }
 }
 
+impl Nutrition {
+    /// Names of the foods that were counted.
+    pub fn counted_foods(&self) -> BTreeSet<&str> {
+        self.lines
+            .iter()
+            .filter_map(|l| match &l.status {
+                Status::Counted { food, .. } => Some(food.as_str()),
+                _ => None,
+            })
+            .collect()
+    }
+}
+
+/// Several recipes' nutrition, each for a number of portions (a day's meals).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Combined {
+    /// By nutrient code, like [`Nutrition::totals`]. `missing_in` names the
+    /// foods without a value, so a non-empty one makes `value` a lower bound.
+    pub totals: BTreeMap<String, Total>,
+    /// Recipes that say nothing about servings: a portion of them is
+    /// unknown, so they're left out (by title).
+    pub no_servings: Vec<String>,
+}
+
+/// Add up `portions` of each recipe, where a portion is one of the
+/// recipe's servings.
+pub fn combine(parts: &[(&Nutrition, f64)]) -> Combined {
+    let mut out = Combined::default();
+    let codes: BTreeSet<&String> = parts.iter().flat_map(|(n, _)| n.totals.keys()).collect();
+    let mut scaled = Vec::new();
+    for (n, portions) in parts {
+        match n.servings.filter(|s| *s > 0.0) {
+            Some(servings) => scaled.push((n, portions / servings, n.counted_foods())),
+            None => {
+                if !out.no_servings.contains(&n.title) {
+                    out.no_servings.push(n.title.clone());
+                }
+            }
+        }
+    }
+    for code in codes {
+        let mut total = Total::default();
+        let mut missing = |food: &str| {
+            if !total.missing_in.iter().any(|m| m == food) {
+                total.missing_in.push(food.to_owned());
+            }
+        };
+        for (n, factor, foods) in &scaled {
+            match n.totals.get(code) {
+                Some(t) => {
+                    t.missing_in.iter().for_each(|f| missing(f));
+                    total.value += t.value * factor;
+                }
+                // None of this recipe's counted foods has a value for it.
+                None => foods.iter().for_each(|f| missing(f)),
+            }
+        }
+        out.totals.insert(code.clone(), total);
+    }
+    out
+}
+
 // ---------------------------------------------------------------------------
 // Display
 
@@ -802,6 +864,31 @@ mod tests {
         // Not counted, and doesn't dilute coverage or mark totals as lower bounds.
         assert_eq!(n.weights(), (100.0, 100.0));
         assert!(n.totals.values().all(|t| t.missing_in.is_empty()));
+    }
+
+    #[test]
+    fn combines_portions_of_several_recipes() {
+        let pasta = recipe(Some(4.0), &[("pasta", v(400.0, Some("g")), false)]);
+        let mut snack = recipe(Some(1.0), &[("formula", v(100.0, Some("ml")), false)]);
+        snack.title = "Snack".into();
+        let mut loose = recipe(None, &[("pasta", v(100.0, Some("g")), false)]);
+        loose.title = "Loose".into();
+        let (a, b, c) = (
+            compute(&pasta, &db(), &table(), Options::default()),
+            compute(&snack, &db(), &table(), Options::default()),
+            compute(&loose, &db(), &table(), Options::default()),
+        );
+        // 1.5 portions of pasta (150 g) + 2 snacks (200 ml), and one recipe
+        // that can't be portioned.
+        let day = combine(&[(&a, 1.5), (&b, 2.0), (&c, 1.0)]);
+        let kcal = &day.totals["ENERCC"];
+        assert_eq!(kcal.value, 1.5 * 350.0 + 2.0 * 65.0);
+        assert!(kcal.missing_in.is_empty());
+        assert_eq!(day.no_servings, ["Loose"]);
+        // Only the pasta has a protein value: the formula counts as unknown.
+        let prot = &day.totals["PROT"];
+        assert_eq!(prot.value, 1.5 * 12.0);
+        assert_eq!(prot.missing_in, ["Formula"]);
     }
 
     #[test]

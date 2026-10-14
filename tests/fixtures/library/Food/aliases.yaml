@@ -1,0 +1,118 @@
+# How ingredient names map to foods, plus what's needed to convert to grams.
+#
+#   nevo:     NEVO code (RIVM Dutch food composition database), for nutrition.
+#             `grocery nevo suggest` lists candidates for foods without one.
+#   piece_g:  grams per piece ("2 onions")
+#   units:    grams per named unit ("3 cloves", "1 blik")
+#   density:  grams per ml (el/tl/ml → g)
+#   aisle:    section heading on the shopping list
+#   synonyms: other spellings / Dutch names; matching is case-insensitive
+#
+# Weights below are rough household averages; adjust to what you buy.
+# NEVO values are per 100 g *edible part*, and recipes are weighed raw, so
+# prefer the "rauw" entry unless the recipe really uses a cooked product.
+
+# Walking order through the shop. Aisles not listed here sort after these.
+aisles:
+  - groente & fruit
+  - vlees & vis
+  - zuivel & eieren
+  - kaas
+  - pasta, rijst & wereldkeuken
+  - conserven & sauzen
+  - kruiden & specerijen
+  - olie & azijn
+
+foods:
+  onion:
+    nevo: 63            # Ui rauw
+    piece_g: 110
+    aisle: groente & fruit
+    synonyms: [ui, uien, yellow onion]
+  garlic:
+    nevo: 830           # Knoflook rauw
+    units: { clove: 5, teen: 5, tenen: 5 }
+    aisle: groente & fruit
+    synonyms: [knoflook]
+  red bell pepper:
+    nevo: 884           # Paprika rode rauw
+    piece_g: 160
+    aisle: groente & fruit
+    synonyms: [rode paprika]
+  floury potato:
+    nevo: 1             # Aardappelen rauw (weighed raw, as bought)
+    aisle: groente & fruit
+    synonyms: [kruimige aardappelen, aardappelen]
+  kale:
+    nevo: 959           # Kool boeren- rauw
+    aisle: groente & fruit
+    synonyms: [boerenkool]
+  coriander:
+    custom: fresh coriander   # not in NEVO 2025/9.0: own values, see custom.yaml
+    aisle: groente & fruit
+    synonyms: [verse koriander, cilantro]
+  basil:
+    nevo: 2177          # Basilicum vers
+    aisle: groente & fruit
+    synonyms: [basilicum]
+
+  smoked sausage:
+    nevo: 324           # Worst rook- gekookt gem (sold pre-cooked)
+    piece_g: 275
+    aisle: vlees & vis
+    synonyms: [rookworst]
+
+  egg:
+    nevo: 83            # Ei kippen- rauw gem
+    piece_g: 55
+    aisle: zuivel & eieren
+    synonyms: [ei, eieren]
+  milk:
+    nevo: 286           # Melk halfvolle
+    density: 1.03
+    aisle: zuivel & eieren
+    synonyms: [melk, halfvolle melk]
+  butter:
+    nevo: 310           # Boter ongezouten (879 = gezouten)
+    aisle: zuivel & eieren
+    synonyms: [roomboter]
+
+  feta:
+    nevo: 3362          # Kaas Feta
+    aisle: kaas
+  parmesan:
+    nevo: 718           # Kaas Parmezaanse
+    aisle: kaas
+    synonyms: [parmezaan, parmigiano]
+
+  spaghetti:
+    nevo: 4             # Pasta witte rauw (dry)
+    aisle: pasta, rijst & wereldkeuken
+  passata:
+    nevo: 2498          # Tomaat gezeefd pak
+    aisle: conserven & sauzen
+    synonyms: [gezeefde tomaten]
+
+  cumin:
+    nevo: 827           # Komijnzaad gedroogd
+    density: 0.45       # ground spice, ~2 g per tl
+    aisle: kruiden & specerijen
+    synonyms: [komijn]
+  chili flakes:
+    nevo: 1221          # Chilipoeder (closest match)
+    density: 0.4
+    aisle: kruiden & specerijen
+    synonyms: [chilivlokken]
+
+  olive oil:
+    nevo: 601           # Olie olijf-
+    density: 0.91
+    aisle: olie & azijn
+    synonyms: [olijfolie]
+
+  salt:
+    nevo: 841           # Zout m toegevoegd jodium
+    synonyms: [zout]
+  black pepper:
+    nevo: 823           # Peper zwarte/witte
+    synonyms: [peper, zwarte peper]

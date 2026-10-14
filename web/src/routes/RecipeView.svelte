@@ -1,7 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Header from '../components/Header.svelte';
+  import StepText from '../components/StepText.svelte';
   import Stepper from '../components/Stepper.svelte';
+  import { allSteps } from '../lib/cooking';
+  import { cooking } from '../lib/cooking.svelte';
+  import { durationRange } from '../lib/recipes';
   import { api, HttpError, OfflineError } from '../lib/api';
   import { copyText } from '../lib/device';
   import { draft } from '../lib/draft.svelte';
@@ -50,6 +54,14 @@
     const s = servings === recipe.servings ? undefined : servings;
     if (s !== wanted) router.go({ name: 'recipe', path, servings: s }, true);
   });
+
+  const progress = $derived(cooking.get(path));
+  const stepCount = $derived(recipe?.display ? allSteps(recipe.display).length : 0);
+
+  function cook() {
+    const s = recipe?.servings && servings && servings !== recipe.servings ? servings : undefined;
+    router.go({ name: 'cook', path, servings: progress ? progress.servings : s });
+  }
 
   const inDraft = $derived(draft.picks.some((p) => p.path === path));
 
@@ -109,6 +121,20 @@
         <span class="small muted">No servings in the recipe, so it can’t be scaled.</span>
       {/if}
     </div>
+    {#if d.time && (d.time.stated || d.time.timers)}
+      <p class="time">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2 2M10 2h4" /></svg>
+        {#if d.time.stated}
+          <strong>{d.time.stated}</strong>
+          {#if d.time.timers}<span class="small muted">· timers add up to {durationRange(d.time.timers)}</span>{/if}
+        {:else if d.time.timers}
+          <span
+            ><strong>{durationRange(d.time.timers)}</strong>
+            <span class="small muted">in timers; steps without a timer not included</span></span
+          >
+        {/if}
+      </p>
+    {/if}
     {#if recipe.tags.length}
       <p class="tags">
         {#each recipe.tags as tag (tag)}<span class="tag">{tag}</span>{/each}
@@ -132,7 +158,7 @@
           <ol>
             {#each section.steps as step, i (i)}
               {#if step.type === 'step'}
-                <li>{step.text}</li>
+                <li><StepText {step} /></li>
               {:else}
                 <p class="note">{step.text}</p>
               {/if}
@@ -147,7 +173,12 @@
     {/if}
 
     <div class="actions">
-      <button class="btn primary" onclick={addToDraft}>{inDraft ? 'Go to new list' : 'Add to a new list'}</button>
+      {#if stepCount}
+        <button class="btn primary" onclick={cook}>
+          {progress ? `Continue cooking (${progress.steps.length}/${stepCount})` : 'Start cooking'}
+        </button>
+      {/if}
+      <button class="btn" class:primary={!stepCount} onclick={addToDraft}>{inDraft ? 'Go to new list' : 'Add to a new list'}</button>
       <button class="btn" onclick={copyMarkdown}>Copy as Markdown</button>
       {#if nutrition === null}
         <button class="btn" onclick={showNutrition}>Nutrition</button>
@@ -182,6 +213,21 @@
     align-items: center;
     gap: 0.6rem;
     font-weight: 600;
+  }
+  .time {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0.5rem 0;
+  }
+  .time svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: var(--muted);
+    stroke-width: 2;
+    stroke-linecap: round;
   }
   .tags {
     display: flex;
@@ -228,6 +274,7 @@
   }
   ol li {
     margin-bottom: 0.8rem;
+    line-height: 1.6;
     padding-left: 0.25rem;
   }
   .note {

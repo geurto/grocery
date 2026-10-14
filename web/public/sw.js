@@ -109,3 +109,15 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(staleWhileRevalidate(request));
   }
 });
+
+// A timer notification: bring the app to the front.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      if (windows.length) return windows[0].focus();
+      return self.clients.openWindow('/');
+    })(),
+  );
+});

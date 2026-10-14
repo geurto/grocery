@@ -2,12 +2,15 @@
 //!
 //! - `nevo_*`: the NEVO food composition table, rebuilt by `import-nevo`.
 //! - `recipes`: an index of the `.cook` files, rebuilt from them at will.
-//! - `lists*`: saved shopping lists with their ticked items. This is the
-//!   only data that exists nowhere else, so it's what a backup is for.
+//! - `lists*`: saved shopping lists with their ticked items.
+//! - `people`, `plan_entries`: meal plans.
+//!
+//! Lists and plans exist nowhere else, so they're what a backup is for.
 
 pub mod import;
 pub mod lists;
 mod nutrition;
+pub mod plans;
 pub mod recipes;
 pub mod search;
 
@@ -21,6 +24,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub use import::{read_nevo, NevoData};
 pub use lists::{ListStatus, ListSummary, StoredItem, StoredList};
+pub use plans::{EntryChange, Meal, NewEntry, Person, PlanEntry};
 pub use recipes::{IndexedRecipe, SyncReport};
 pub use search::{Candidate, Hit};
 
@@ -50,9 +54,10 @@ impl Error {
     }
 }
 
-/// v2 added the recipe index and shopping lists. Every table is
-/// `CREATE IF NOT EXISTS`, so opening a v1 database upgrades it in place.
-const SCHEMA_VERSION: i32 = 2;
+/// v2 added the recipe index and shopping lists, v3 meal plans. Every table
+/// is `CREATE IF NOT EXISTS`, so opening an older database upgrades it in
+/// place.
+const SCHEMA_VERSION: i32 = 3;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -132,6 +137,21 @@ CREATE TABLE IF NOT EXISTS list_items (
     checked  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS list_items_by_list ON list_items (list, pos);
+CREATE TABLE IF NOT EXISTS people (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+CREATE TABLE IF NOT EXISTS plan_entries (
+    id         INTEGER PRIMARY KEY,
+    person     INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+    day        TEXT NOT NULL,      -- YYYY-MM-DD
+    meal       TEXT CHECK (meal IN ('breakfast', 'lunch', 'dinner', 'snack')),
+    meal_order INTEGER NOT NULL,   -- for sorting; no meal sorts last
+    path       TEXT NOT NULL,      -- relative to Recipes/
+    title      TEXT NOT NULL,
+    portions   REAL NOT NULL CHECK (portions > 0)
+);
+CREATE INDEX IF NOT EXISTS plan_entries_by_day ON plan_entries (person, day);
 ";
 
 pub(crate) fn join_lines(items: &[String]) -> String {

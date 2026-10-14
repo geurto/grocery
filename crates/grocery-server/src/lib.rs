@@ -10,6 +10,7 @@
 //! network (Tailscale, WireGuard), or put an authenticating proxy in front.
 
 pub mod api;
+mod plans;
 pub mod web;
 
 use std::net::SocketAddr;
@@ -35,6 +36,10 @@ pub enum Event {
     List { id: i64 },
     /// The recipe index changed.
     Recipes,
+    /// Someone's meal plan changed.
+    Plan { person: i64 },
+    /// People were added, renamed or removed.
+    People,
 }
 
 pub struct App {

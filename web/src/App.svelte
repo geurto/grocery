@@ -4,7 +4,14 @@
   import ListView from './routes/ListView.svelte';
   import Lists from './routes/Lists.svelte';
   import NewList from './routes/NewList.svelte';
+  import Recipes from './routes/Recipes.svelte';
   import RecipeView from './routes/RecipeView.svelte';
+  import TabBar from './components/TabBar.svelte';
+  import TimerPill from './components/TimerPill.svelte';
+  import Cook from './routes/Cook.svelte';
+  import Plan from './routes/Plan.svelte';
+  import PlanAdd from './routes/PlanAdd.svelte';
+  import PlanList from './routes/PlanList.svelte';
 
   $effect(() => {
     store.connect();
@@ -17,16 +24,35 @@
   });
 
   const route = $derived(router.route);
+  /** Top-level screens get the tab bar. */
+  const tabs = $derived(route.name === 'lists' || route.name === 'recipes' || route.name === 'plan');
 </script>
 
 {#if route.name === 'list'}
   {#key route.id}<ListView id={route.id} />{/key}
 {:else if route.name === 'new'}
   <NewList />
+{:else if route.name === 'cook'}
+  {#key route.path}<Cook path={route.path} servings={route.servings} />{/key}
+{:else if route.name === 'plan'}
+  <Plan day={route.day} />
+{:else if route.name === 'plan-add'}
+  <PlanAdd day={route.day} meal={route.meal} />
+{:else if route.name === 'plan-list'}
+  {#key route.start}<PlanList start={route.start} />{/key}
+{:else if route.name === 'recipes'}
+  <Recipes />
 {:else if route.name === 'recipe'}
   {#key route.path}<RecipeView path={route.path} servings={route.servings} />{/key}
 {:else}
   <Lists />
+{/if}
+
+{#if tabs}
+  <TabBar />
+{/if}
+{#if route.name !== 'cook'}
+  <TimerPill above={tabs} />
 {/if}
 
 {#if store.notice}

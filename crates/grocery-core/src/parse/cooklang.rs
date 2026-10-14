@@ -4,14 +4,16 @@
 //! Units are left as written (empty converter) because [`crate::units`]
 //! handles normalization, including Dutch units.
 
-use std::fmt::Write as _;
 use std::path::Path;
 
 use cooklang::{quantity::Value, Converter, CooklangParser, Extensions, Item, Modifiers};
 
 use super::title_from_path;
 use crate::error::{Error, Result};
-use crate::model::{Amount, Content, Ingredient, Recipe, Section};
+use crate::model::{
+    Amount, Content, Duration, Ingredient, Recipe, RecipeTime, Section, Step, StepItem,
+};
+use crate::units::{parse_minutes, time_unit_seconds};
 
 /// Building the inner parser is not free, so create one and reuse it.
 #[derive(Debug)]
@@ -133,23 +135,7 @@ impl Parser {
                 continue;
             }
             for q in quantities {
-                let amount = match q.value() {
-                    Value::Number(n) => Amount::Value {
-                        qty: n.value(),
-                        unit: q.unit().map(str::to_owned),
-                        scalable: q.scalable(),
-                    },
-                    // Buy for the upper end of a range.
-                    Value::Range { end, .. } => Amount::Value {
-                        qty: end.value(),
-                        unit: q.unit().map(str::to_owned),
-                        scalable: q.scalable(),
-                    },
-                    // Text is never scalable upstream; a recovered number
-                    // should scale like any other ingredient amount.
-                    Value::Text(t) => text_quantity(t, true),
-                };
-                ingredients.push(base(amount));
+                ingredients.push(base(amount_of(q)));
             }
         }
 
@@ -162,12 +148,14 @@ impl Parser {
                     .content
                     .iter()
                     .map(|c| match c {
-                        cooklang::Content::Step(step) => Content::Step(step_text(step, &parsed)),
+                        cooklang::Content::Step(step) => Content::Step(step_items(step, &parsed)),
                         cooklang::Content::Text(t) => Content::Note(t.trim().to_owned()),
                     })
                     .collect(),
             })
             .collect();
+
+        let time = recipe_time(&parsed.metadata, &mut warnings);
 
         Ok(Recipe {
             path: path.into(),
@@ -175,6 +163,7 @@ impl Parser {
             servings,
             tags,
             description,
+            time,
             ingredients,
             sections,
             warnings,
@@ -182,31 +171,115 @@ impl Parser {
     }
 }
 
-/// A step as readable text: ingredients and cookware by name, timers and
-/// inline quantities as "10 minutes". Amounts are in the ingredient list.
-fn step_text(step: &cooklang::Step, recipe: &cooklang::Recipe) -> String {
-    let mut out = String::new();
+fn amount_of(q: &cooklang::Quantity) -> Amount {
+    match q.value() {
+        Value::Number(n) => Amount::Value {
+            qty: n.value(),
+            unit: q.unit().map(str::to_owned),
+            scalable: q.scalable(),
+        },
+        // Buy for the upper end of a range.
+        Value::Range { end, .. } => Amount::Value {
+            qty: end.value(),
+            unit: q.unit().map(str::to_owned),
+            scalable: q.scalable(),
+        },
+        // Text is never scalable upstream; a recovered number
+        // should scale like any other ingredient amount.
+        Value::Text(t) => text_quantity(t, true),
+    }
+}
+
+/// A step with its ingredients, cookware and timers kept apart from the text.
+fn step_items(step: &cooklang::Step, recipe: &cooklang::Recipe) -> Step {
+    let mut items: Vec<StepItem> = Vec::new();
     for item in &step.items {
-        match item {
-            Item::Text { value } => out.push_str(value),
-            Item::Ingredient { index } => out.push_str(&recipe.ingredients[*index].display_name()),
-            Item::Cookware { index } => out.push_str(recipe.cookware[*index].display_name()),
+        let next = match item {
+            Item::Text { value } => StepItem::Text(value.clone()),
+            Item::Ingredient { index } => {
+                let ing = &recipe.ingredients[*index];
+                StepItem::Ingredient {
+                    name: ing.display_name().into_owned(),
+                    amount: ing.quantity.as_ref().map_or(Amount::Unspecified, amount_of),
+                }
+            }
+            Item::Cookware { index } => {
+                StepItem::Cookware(recipe.cookware[*index].display_name().to_owned())
+            }
             Item::Timer { index } => {
                 let timer = &recipe.timers[*index];
-                match (&timer.quantity, &timer.name) {
-                    (Some(q), _) => {
-                        let _ = write!(out, "{q}");
-                    }
-                    (None, Some(name)) => out.push_str(name),
-                    (None, None) => {}
+                let text = match (&timer.quantity, &timer.name) {
+                    (Some(q), _) => q.to_string(),
+                    (None, Some(name)) => name.clone(),
+                    (None, None) => String::new(),
+                };
+                StepItem::Timer {
+                    name: timer.name.clone(),
+                    text,
+                    duration: timer.quantity.as_ref().and_then(timer_duration),
                 }
             }
             Item::InlineQuantity { index } => {
-                let _ = write!(out, "{}", recipe.inline_quantities[*index]);
+                StepItem::Quantity(recipe.inline_quantities[*index].to_string())
             }
+        };
+        // Merge adjacent text so the viewer gets whole runs.
+        match (items.last_mut(), next) {
+            (Some(StepItem::Text(prev)), StepItem::Text(t)) => prev.push_str(&t),
+            (_, next) => items.push(next),
         }
     }
-    out.trim().to_owned()
+    // Trim like the old text export did.
+    if let Some(StepItem::Text(t)) = items.first_mut() {
+        *t = t.trim_start().to_owned();
+    }
+    if let Some(StepItem::Text(t)) = items.last_mut() {
+        *t = t.trim_end().to_owned();
+    }
+    items.retain(|i| !matches!(i, StepItem::Text(t) if t.is_empty()));
+    Step { items }
+}
+
+fn timer_duration(q: &cooklang::Quantity) -> Option<Duration> {
+    let unit = time_unit_seconds(q.unit()?)?;
+    match q.value() {
+        Value::Number(n) => Some(Duration::exact(n.value() * unit)),
+        Value::Range { start, end } => Some(Duration {
+            min: start.value() * unit,
+            max: end.value() * unit,
+        }),
+        Value::Text(t) => crate::units::parse_number(t).map(|v| Duration::exact(v * unit)),
+    }
+}
+
+/// `time:` (also `duration`, `tijd`, `bereidingstijd`), else `prep time:` and
+/// `cook time:`. A value we can't read is a warning, not a guess.
+fn recipe_time(meta: &cooklang::Metadata, warnings: &mut Vec<String>) -> Option<RecipeTime> {
+    let mut read = |keys: &[&str]| -> Option<f64> {
+        let (key, value) = keys.iter().find_map(|k| Some((*k, meta.get(*k)?)))?;
+        let minutes = value
+            .as_f64()
+            .or_else(|| value.as_str().and_then(parse_minutes))
+            .filter(|m| *m >= 0.0);
+        if minutes.is_none() {
+            warnings.push(format!(
+                "metadata '{key}': can't read a time from {value:?}; write e.g. '40 min'"
+            ));
+        }
+        minutes
+    };
+    let time = RecipeTime {
+        total: read(&[
+            "time",
+            "duration",
+            "time required",
+            "tijd",
+            "bereidingstijd",
+        ]),
+        prep: read(&["prep time", "prep_time", "voorbereidingstijd"]),
+        cook: read(&["cook time", "cook_time", "kooktijd"]),
+    };
+    (time != RecipeTime::default()).then_some(time)
 }
 
 fn render_report(report: &cooklang::error::SourceReport, path: &Path, text: &str) -> String {
@@ -335,16 +408,80 @@ mod tests {
                 Section {
                     name: None,
                     content: vec![
-                        Content::Step("Boil spaghetti in a pot for 10 minutes.".into()),
+                        Content::Step(Step {
+                            items: vec![
+                                StepItem::Text("Boil ".into()),
+                                StepItem::Ingredient {
+                                    name: "spaghetti".into(),
+                                    amount: value(400.0, Some("g"))
+                                },
+                                StepItem::Text(" in a ".into()),
+                                StepItem::Cookware("pot".into()),
+                                StepItem::Text(" for ".into()),
+                                StepItem::Timer {
+                                    name: None,
+                                    text: "10 minutes".into(),
+                                    duration: Some(Duration::exact(600.0)),
+                                },
+                                StepItem::Text(".".into()),
+                            ]
+                        }),
                         Content::Note("Use plenty of water.".into()),
                     ],
                 },
                 Section {
                     name: Some("Sauce".into()),
-                    content: vec![Content::Step("Fry olive oil gently.".into())],
+                    content: vec![Content::Step(Step {
+                        items: vec![
+                            StepItem::Text("Fry ".into()),
+                            StepItem::Ingredient {
+                                name: "olive oil".into(),
+                                amount: value(2.0, Some("tbsp"))
+                            },
+                            StepItem::Text(" gently.".into()),
+                        ]
+                    })],
                 },
             ]
         );
+        let Content::Step(first) = &r.sections[0].content[0] else {
+            panic!()
+        };
+        assert_eq!(first.text(), "Boil spaghetti in a pot for 10 minutes.");
+    }
+
+    #[test]
+    fn times_from_metadata_and_timers() {
+        let r = parse(
+            "---\ntime: 1 uur 15 min\n---\n\
+             Bak ~{30%seconds}, dan ~{2-3%minuten}.\n\n\
+             Laat ~{1%uur} rusten.\n\n\
+             Snijd de ui.\n",
+        );
+        assert_eq!(r.time.unwrap().minutes(), Some(75.0));
+        assert_eq!(
+            r.timers_total(),
+            Some(Duration {
+                min: 30.0 + 120.0 + 3600.0,
+                max: 30.0 + 180.0 + 3600.0
+            })
+        );
+        let steps: Vec<_> = r.sections[0]
+            .content
+            .iter()
+            .map(|c| match c {
+                Content::Step(s) => s.duration(),
+                Content::Note(_) => None,
+            })
+            .collect();
+        assert_eq!(steps[2], None);
+
+        let r = parse("---\nprep time: 10\ncook time: 20 min\n---\nCook.");
+        assert_eq!(r.time.unwrap().minutes(), Some(30.0));
+
+        let r = parse("---\ntime: a while\n---\nCook.");
+        assert_eq!(r.time, None);
+        assert!(r.warnings[0].contains("'time'"), "{:?}", r.warnings);
     }
 
     #[test]

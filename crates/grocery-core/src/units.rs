@@ -50,6 +50,12 @@ fn table(unit: &str) -> Option<(Dim, f64)> {
     Some(entry)
 }
 
+/// A unit with a fixed size (g, ml, el, tl, cup, ...): its weight comes from
+/// the food's `density`, so it can't be given weights under `units:`.
+pub fn is_fixed_size(unit: &str) -> bool {
+    matches!(table(&clean_unit(unit)), Some((Dim::Mass | Dim::Volume, _)))
+}
+
 /// Lowercase, trim, drop a trailing period ("el." → "el").
 pub fn clean_unit(unit: &str) -> String {
     unit.trim().trim_end_matches('.').to_lowercase()
@@ -124,6 +130,49 @@ fn vulgar_fraction(t: &str) -> Option<f64> {
     })
 }
 
+/// Seconds per time unit, English and Dutch: `min`, `minuten`, `uur`, ...
+pub fn time_unit_seconds(unit: &str) -> Option<f64> {
+    Some(match clean_unit(unit).as_str() {
+        "s" | "sec" | "secs" | "second" | "seconds" | "seconde" | "seconden" => 1.0,
+        "m" | "min" | "mins" | "minute" | "minutes" | "minuut" | "minuten" => 60.0,
+        "h" | "hr" | "hrs" | "hour" | "hours" | "u" | "uur" | "uren" => 3600.0,
+        _ => return None,
+    })
+}
+
+/// A duration as written in metadata, in minutes: `40 min`, `1 uur 15 min`,
+/// `1h30m`, `1,5 uur`, or a bare `45` (minutes).
+pub fn parse_minutes(text: &str) -> Option<f64> {
+    let t = text.trim().to_lowercase();
+    if let Some(v) = parse_number(&t) {
+        return Some(v);
+    }
+    // Split "1h30m" / "1 uur 30 min" into number and unit tokens.
+    let mut tokens: Vec<String> = Vec::new();
+    for ch in t.chars() {
+        let digit = ch.is_ascii_digit() || ch == '.' || ch == ',';
+        match tokens.last_mut() {
+            Some(last)
+                if !ch.is_whitespace()
+                    && last.chars().next().is_some_and(|c| c.is_ascii_digit()) == digit =>
+            {
+                last.push(ch)
+            }
+            _ if ch.is_whitespace() => tokens.push(String::new()),
+            _ => tokens.push(ch.to_string()),
+        }
+    }
+    tokens.retain(|t| !t.is_empty() && t != "en" && t != "and");
+    if tokens.len() % 2 != 0 {
+        return None;
+    }
+    let mut seconds = 0.0;
+    for pair in tokens.chunks(2) {
+        seconds += parse_number(&pair[0])? * time_unit_seconds(&pair[1])?;
+    }
+    Some(seconds / 60.0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,6 +216,19 @@ mod tests {
             normalize(1.0, Some("glass")).dim,
             Dim::Named("glass".into())
         );
+    }
+
+    #[test]
+    fn durations() {
+        assert_eq!(parse_minutes("40 min"), Some(40.0));
+        assert_eq!(parse_minutes("45"), Some(45.0));
+        assert_eq!(parse_minutes("1h30m"), Some(90.0));
+        assert_eq!(parse_minutes("1 uur en 15 minuten"), Some(75.0));
+        assert_eq!(parse_minutes("1,5 uur"), Some(90.0));
+        assert_eq!(parse_minutes("90 seconden"), Some(1.5));
+        assert_eq!(parse_minutes("a while"), None);
+        assert_eq!(parse_minutes("30 parsecs"), None);
+        assert_eq!(time_unit_seconds("Minuten"), Some(60.0));
     }
 
     #[test]
