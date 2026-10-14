@@ -21,12 +21,7 @@ pub enum Error {
     #[error("{}: {message}", path.display())]
     Parse { path: PathBuf, message: String },
 
-    /// A Markdown file without an `ingredients` list in its frontmatter.
-    /// Directory scans skip these; passing one explicitly is an error.
-    #[error("{}: not a recipe (no `ingredients` in frontmatter)", .0.display())]
-    NotARecipe(PathBuf),
-
-    #[error("{}: unsupported recipe file type (expected .cook or .md)", .0.display())]
+    #[error("{}: not a recipe (expected a .cook file)", .0.display())]
     Unsupported(PathBuf),
 
     #[error("{}: {message}", path.display())]

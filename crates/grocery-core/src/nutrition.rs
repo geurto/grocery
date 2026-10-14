@@ -66,7 +66,7 @@ pub fn needed_codes(recipe: &Recipe, db: &FoodDb) -> BTreeSet<u32> {
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Options {
-    /// Count ingredients marked optional (`@?feta`, `optional: true`).
+    /// Count ingredients marked optional (`@?feta`).
     pub include_optional: bool,
 }
 
@@ -609,7 +609,7 @@ mod tests {
                     note: None,
                 })
                 .collect(),
-            warnings: vec![],
+            ..Default::default()
         }
     }
 

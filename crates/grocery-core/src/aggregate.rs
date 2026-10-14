@@ -8,6 +8,7 @@
 //! honest "2 + 100 g" beats a guess.
 
 use std::collections::{BTreeSet, HashMap};
+use std::path::PathBuf;
 
 use crate::food::{normalize_name, FoodDb, FoodInfo, Pantry};
 use crate::model::{Amount, Recipe};
@@ -35,8 +36,7 @@ pub struct ShoppingList {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Source {
     pub title: String,
-    /// Obsidian link target (file name without extension).
-    pub link: String,
+    pub path: PathBuf,
     /// Servings cooked; `None` if neither the recipe nor the request says.
     pub servings: Option<f64>,
     pub factor: f64,
@@ -57,6 +57,9 @@ pub struct Item {
     pub recipes: Vec<String>,
     /// Whether the name resolved to a food in `aliases.yaml`.
     pub known: bool,
+    /// Ticked off while shopping. Always `false` from [`build`]; the web
+    /// service stores it.
+    pub checked: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -146,7 +149,7 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
         let (factor, servings) = scale_factor(recipe, sel.servings, &mut warnings);
         sources.push(Source {
             title: recipe.title.clone(),
-            link: recipe.link_target(),
+            path: recipe.path.clone(),
             servings,
             factor,
         });
@@ -224,6 +227,7 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
             optional: acc.all_optional,
             recipes: acc.recipes.clone(),
             known,
+            checked: false,
         };
         if acc.buckets.is_empty() {
             items.push(make(None, acc.notes.clone()));
@@ -308,7 +312,7 @@ mod tests {
                     note: None,
                 })
                 .collect(),
-            warnings: vec![],
+            ..Default::default()
         }
     }
 

@@ -11,3 +11,6 @@ grocery-core.workspace = true
 rusqlite.workspace = true
 csv.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

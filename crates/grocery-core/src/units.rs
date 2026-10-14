@@ -55,12 +55,6 @@ pub fn clean_unit(unit: &str) -> String {
     unit.trim().trim_end_matches('.').to_lowercase()
 }
 
-/// True for units with a fixed conversion (mass, volume, count).
-/// Used by the shorthand parser to decide whether a token is a unit.
-pub fn is_standard_unit(unit: &str) -> bool {
-    table(&clean_unit(unit)).is_some()
-}
-
 /// Normalize a named unit so "cloves"/"clove" and "Cans"/"can" match.
 /// Deliberately naive: strips one trailing "s" (not "ss", and not from
 /// short words like "bos"). Dutch plurals

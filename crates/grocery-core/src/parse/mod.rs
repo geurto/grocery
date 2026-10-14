@@ -1,70 +1,40 @@
-//! Recipe parsers. Each format implements [`RecipeSource`] and produces the
-//! same [`Recipe`]; [`Parsers`] picks one by file extension.
+//! Recipe parsing: `.cook` files into [`Recipe`]s.
+//!
+//! [`Parser`] wraps the official `cooklang` crate (see [`cooklang`] for the
+//! mapping); this module adds the file and directory handling.
 
 mod cooklang;
-mod frontmatter;
 
 use std::path::{Path, PathBuf};
 
-pub use self::cooklang::CooklangSource;
-pub use self::frontmatter::{parse_shorthand, FrontmatterSource};
+pub use self::cooklang::Parser;
 
 use crate::error::{Error, Result};
 use crate::model::Recipe;
 
-pub trait RecipeSource {
-    /// Parse `text`, which was read from `path`. The path is only used for
-    /// error messages and as a fallback title.
-    fn parse(&self, path: &Path, text: &str) -> Result<Recipe>;
+/// True for `.cook` files (case-insensitive).
+pub fn is_recipe_file(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("cook"))
 }
 
-/// Holds one instance of each parser. Building the Cooklang parser is not
-/// free, so create this once and reuse it (the web service will keep one).
-#[derive(Debug, Default)]
-pub struct Parsers {
-    pub cooklang: CooklangSource,
-    pub frontmatter: FrontmatterSource,
-}
-
-impl Parsers {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn for_path(&self, path: &Path) -> Option<&dyn RecipeSource> {
-        match extension(path).as_deref() {
-            Some("cook") => Some(&self.cooklang),
-            Some("md") => Some(&self.frontmatter),
-            _ => None,
-        }
-    }
-
-    pub fn parse_str(&self, path: &Path, text: &str) -> Result<Recipe> {
-        let source = self
-            .for_path(path)
-            .ok_or_else(|| Error::Unsupported(path.into()))?;
-        source.parse(path, text)
-    }
-
+impl Parser {
     pub fn parse_file(&self, path: &Path) -> Result<Recipe> {
+        if !is_recipe_file(path) {
+            return Err(Error::Unsupported(path.into()));
+        }
         let text = std::fs::read_to_string(path).map_err(|e| Error::io(path, e))?;
-        self.parse_str(path, &text)
+        self.parse(path, &text)
     }
 
-    /// Parse every recipe under `dir` (recursively), sorted by path.
-    /// Markdown files that aren't recipes are skipped silently; every other
-    /// failure is returned alongside the successes so one broken file doesn't
-    /// hide the rest.
+    /// Parse every recipe under `dir` (recursively), sorted by path. Failures
+    /// are returned alongside the successes so one broken file doesn't hide
+    /// the rest.
     pub fn parse_dir(&self, dir: &Path) -> Result<(Vec<Recipe>, Vec<Error>)> {
-        let mut files = Vec::new();
-        collect_files(dir, &mut files)?;
-        files.sort();
-
         let (mut ok, mut failed) = (Vec::new(), Vec::new());
-        for path in files.into_iter().filter(|p| self.for_path(p).is_some()) {
+        for path in recipe_files(dir)? {
             match self.parse_file(&path) {
                 Ok(r) => ok.push(r),
-                Err(Error::NotARecipe(_)) => {}
                 Err(e) => failed.push(e),
             }
         }
@@ -72,8 +42,14 @@ impl Parsers {
     }
 }
 
-fn extension(path: &Path) -> Option<String> {
-    path.extension().map(|e| e.to_string_lossy().to_lowercase())
+/// Every `.cook` file under `dir`, recursively, sorted. Hidden files and
+/// directories (`.git/`, editor swap files) are skipped.
+pub fn recipe_files(dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    collect_files(dir, &mut files)?;
+    files.retain(|p| is_recipe_file(p));
+    files.sort();
+    Ok(files)
 }
 
 fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
@@ -83,7 +59,7 @@ fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
             .file_name()
             .is_some_and(|n| n.to_string_lossy().starts_with('.'));
         if hidden {
-            continue; // .obsidian/, .trash/, .livesync/
+            continue;
         }
         if path.is_dir() {
             collect_files(&path, out)?;

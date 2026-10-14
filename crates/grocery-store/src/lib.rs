@@ -1,12 +1,14 @@
 //! SQLite storage for the grocery app.
 //!
-//! Holds reference data that doesn't belong in the vault: the NEVO food
-//! composition table (and, from step 4, the derived recipe index). Keep the
-//! database outside the vault; it's rebuilt from sources, never synced.
-//!
-//! Tables are prefixed `nevo_` so later tables don't collide.
+//! - `nevo_*`: the NEVO food composition table, rebuilt by `import-nevo`.
+//! - `recipes`: an index of the `.cook` files, rebuilt from them at will.
+//! - `lists*`: saved shopping lists with their ticked items. This is the
+//!   only data that exists nowhere else, so it's what a backup is for.
 
 pub mod import;
+pub mod lists;
+mod nutrition;
+pub mod recipes;
 pub mod search;
 
 use std::cell::OnceCell;
@@ -18,6 +20,8 @@ use grocery_core::nutrition::{Basis, Composition, CompositionTable};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub use import::{read_nevo, NevoData};
+pub use lists::{ListStatus, ListSummary, StoredItem, StoredList};
+pub use recipes::{IndexedRecipe, SyncReport};
 pub use search::{Candidate, Hit};
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
@@ -30,6 +34,10 @@ pub enum Error {
     Format(String),
     #[error("NEVO data has not been imported yet (run `grocery import-nevo <dir>`)")]
     NotImported,
+    #[error(transparent)]
+    Library(#[from] grocery_core::Error),
+    #[error("{0}")]
+    Invalid(String),
 }
 
 impl Error {
@@ -42,7 +50,9 @@ impl Error {
     }
 }
 
-const SCHEMA_VERSION: i32 = 1;
+/// v2 added the recipe index and shopping lists. Every table is
+/// `CREATE IF NOT EXISTS`, so opening a v1 database upgrades it in place.
+const SCHEMA_VERSION: i32 = 2;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -76,7 +86,65 @@ CREATE TABLE IF NOT EXISTS nevo_values (
     value    REAL NOT NULL,
     PRIMARY KEY (food, nutrient)
 ) WITHOUT ROWID;
+
+-- Lists of short strings (tags, names, warnings) are stored newline-joined.
+CREATE TABLE IF NOT EXISTS recipes (
+    path        TEXT PRIMARY KEY,  -- relative to Recipes/, '/'-separated
+    title       TEXT NOT NULL,
+    servings    REAL,
+    tags        TEXT NOT NULL,
+    description TEXT,
+    ingredients TEXT NOT NULL,
+    warnings    TEXT NOT NULL,
+    error       TEXT,
+    mtime       INTEGER NOT NULL,  -- ns since the epoch
+    size        INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS lists (
+    id      INTEGER PRIMARY KEY,
+    title   TEXT NOT NULL,
+    created TEXT NOT NULL,
+    status  TEXT NOT NULL CHECK (status IN ('open', 'done')),
+    pantry  TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS list_recipes (
+    list     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+    pos      INTEGER NOT NULL,
+    path     TEXT NOT NULL,
+    title    TEXT NOT NULL,
+    servings REAL,
+    factor   REAL NOT NULL,
+    PRIMARY KEY (list, pos)
+);
+CREATE TABLE IF NOT EXISTS list_items (
+    id       INTEGER PRIMARY KEY,
+    list     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
+    pos      INTEGER NOT NULL,
+    name     TEXT NOT NULL,
+    aisle    TEXT,
+    dim      TEXT,                 -- g | ml | pc | unit:<name>; NULL = no quantity
+    value    REAL,
+    label    TEXT,
+    notes    TEXT NOT NULL,
+    optional INTEGER NOT NULL,
+    recipes  TEXT NOT NULL,
+    known    INTEGER NOT NULL,
+    checked  INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS list_items_by_list ON list_items (list, pos);
 ";
+
+pub(crate) fn join_lines(items: &[String]) -> String {
+    items.join("\n")
+}
+
+pub(crate) fn split_lines(s: &str) -> Vec<String> {
+    if s.is_empty() {
+        Vec::new()
+    } else {
+        s.split('\n').map(str::to_owned).collect()
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NevoInfo {
@@ -138,7 +206,11 @@ impl Store {
             std::fs::create_dir_all(dir)
                 .map_err(|e| Error::Format(format!("creating {}: {e}", dir.display())))?;
         }
-        Self::init(Connection::open(path)?)
+        let conn = Connection::open(path)?;
+        // The service and the CLI may use the same file at once.
+        conn.busy_timeout(std::time::Duration::from_secs(5))?;
+        conn.query_row("PRAGMA journal_mode = WAL", [], |_| Ok(()))?;
+        Self::init(conn)
     }
 
     pub fn open_in_memory() -> Result<Self> {

@@ -1,11 +1,12 @@
-//! `grocery`: build shopping lists from the recipes in an Obsidian vault.
+//! `grocery`: shopping lists and nutrition from a library of Cooklang recipes.
 //!
 //! ```text
 //! grocery list "Pasta arrabbiata=4" Shakshuka        # Markdown to stdout
 //! grocery list --plain Pasta Shakshuka               # text for Signal
-//! grocery list --write Pasta Shakshuka               # → Shopping/2026-10-12.md
+//! grocery export "Pasta arrabbiata=2"                # recipe as Markdown
 //! grocery show Shakshuka                             # parsed recipe
 //! grocery check                                      # parse errors + unmapped names
+//! grocery serve                                      # web service (see grocery-server)
 //!
 //! grocery import-nevo ~/Downloads/NEVO2025           # load NEVO into SQLite
 //! grocery nevo search boerenkool                     # find NEVO codes
@@ -16,25 +17,25 @@
 mod nevo_cmd;
 
 use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
+use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::process::ExitCode;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, Result};
 use clap::{Parser, Subcommand};
 use grocery_core::aggregate::{self, Selection};
-use grocery_core::food::{FoodDb, Pantry};
-use grocery_core::model::Amount;
-use grocery_core::parse::Parsers;
+use grocery_core::library::Library;
+use grocery_core::model::{Amount, Recipe};
 use grocery_core::render;
 
 #[derive(Parser)]
-#[command(version, about = "Shopping lists from Markdown/Cooklang recipes")]
+#[command(version, about = "Shopping lists and nutrition from Cooklang recipes")]
 struct Cli {
-    /// Vault root (contains Recipes/, Food/, Shopping/).
-    #[arg(long, env = "GROCERY_VAULT", default_value = ".", global = true)]
-    vault: PathBuf,
+    /// Library root (contains Recipes/ and Food/).
+    #[arg(long, env = "GROCERY_LIBRARY", default_value = ".", global = true)]
+    library: PathBuf,
 
-    /// SQLite database for NEVO data. Keep it outside the vault.
+    /// SQLite database: NEVO data, recipe index, saved lists.
     /// [default: $XDG_DATA_HOME/grocery/grocery.sqlite]
     #[arg(long, env = "GROCERY_DB", global = true)]
     db: Option<PathBuf>,
@@ -51,11 +52,15 @@ enum Command {
         #[arg(required = true, value_name = "RECIPE[=SERVINGS]")]
         recipes: Vec<String>,
         /// Plain text for pasting into Signal instead of Markdown.
-        #[arg(long, conflicts_with = "write")]
-        plain: bool,
-        /// Write to Shopping/<date>.md in the vault (never overwrites).
         #[arg(long)]
-        write: bool,
+        plain: bool,
+    },
+    /// Print a recipe as Markdown (or plain text), scaled with "=SERVINGS".
+    Export {
+        #[arg(value_name = "RECIPE[=SERVINGS]")]
+        recipe: String,
+        #[arg(long)]
+        plain: bool,
     },
     /// Show how a recipe was parsed.
     Show { recipe: String },
@@ -77,6 +82,12 @@ enum Command {
         /// Count optional ingredients too.
         #[arg(long)]
         with_optional: bool,
+    },
+    /// Run the web service: recipe index, shopping lists, exports.
+    Serve {
+        /// No authentication: keep this on localhost or a private network.
+        #[arg(long, env = "GROCERY_LISTEN", default_value = "127.0.0.1:8080")]
+        listen: SocketAddr,
     },
 }
 
@@ -100,79 +111,6 @@ enum NevoCommand {
         #[arg(long, default_value_t = 3)]
         limit: usize,
     },
-}
-
-pub(crate) struct Vault {
-    root: PathBuf,
-    parsers: Parsers,
-}
-
-impl Vault {
-    fn recipes_dir(&self) -> PathBuf {
-        self.root.join("Recipes")
-    }
-
-    fn food_db(&self) -> Result<FoodDb> {
-        Ok(FoodDb::load(&self.root.join("Food/aliases.yaml"))?)
-    }
-
-    fn pantry(&self) -> Result<Pantry> {
-        Ok(Pantry::load(&self.root.join("Food/pantry.yaml"))?)
-    }
-
-    /// Accept a path (as given, or relative to the vault) or a recipe name
-    /// matching a file stem in Recipes/ (case-insensitive).
-    fn find_recipe(&self, arg: &str) -> Result<PathBuf> {
-        for candidate in [PathBuf::from(arg), self.root.join(arg)] {
-            if candidate.is_file() {
-                return Ok(candidate);
-            }
-        }
-        let wanted = arg.to_lowercase();
-        let mut matches = Vec::new();
-        walk(&self.recipes_dir(), &mut |p: &Path| {
-            let stem = p.file_stem().map(|s| s.to_string_lossy().to_lowercase());
-            if stem.as_deref() == Some(wanted.as_str()) && self.parsers.for_path(p).is_some() {
-                matches.push(p.to_path_buf());
-            }
-        })?;
-        match matches.len() {
-            1 => Ok(matches.remove(0)),
-            0 => bail!(
-                "no recipe named '{arg}' in {}",
-                self.recipes_dir().display()
-            ),
-            _ => bail!(
-                "'{arg}' is ambiguous: {}",
-                matches
-                    .iter()
-                    .map(|p| p.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-        }
-    }
-}
-
-fn walk(dir: &Path, f: &mut dyn FnMut(&Path)) -> Result<()> {
-    if !dir.is_dir() {
-        return Ok(());
-    }
-    for entry in std::fs::read_dir(dir).with_context(|| format!("reading {}", dir.display()))? {
-        let path = entry?.path();
-        if path
-            .file_name()
-            .is_some_and(|n| n.to_string_lossy().starts_with('.'))
-        {
-            continue;
-        }
-        if path.is_dir() {
-            walk(&path, f)?;
-        } else {
-            f(&path);
-        }
-    }
-    Ok(())
 }
 
 /// "Pasta=4" → ("Pasta", Some(4.0)). Only splits when the part after the
@@ -205,42 +143,50 @@ fn main() -> ExitCode {
 
 fn run() -> Result<ExitCode> {
     let cli = Cli::parse();
-    let vault = Vault {
-        root: cli.vault,
-        parsers: Parsers::new(),
-    };
     let db = cli.db.unwrap_or_else(nevo_cmd::default_db_path);
+    if let Command::Serve { listen } = cli.command {
+        grocery_server::run(grocery_server::Config {
+            library: cli.library,
+            db,
+            listen,
+        })?;
+        return Ok(ExitCode::SUCCESS);
+    }
+    let library = &Library::new(cli.library);
     match cli.command {
-        Command::List {
-            recipes,
-            plain,
-            write,
-        } => list(&vault, &recipes, plain, write),
-        Command::Show { recipe } => show(&vault, &recipe),
-        Command::Check => check(&vault),
+        Command::List { recipes, plain } => list(library, &recipes, plain),
+        Command::Export { recipe, plain } => export(library, &recipe, plain),
+        Command::Show { recipe } => show(library, &recipe),
+        Command::Check => check(library),
         Command::ImportNevo { path } => nevo_cmd::import(&db, &path),
         Command::Nevo { command } => match command {
             NevoCommand::Search { query, limit } => nevo_cmd::search(&db, &query, limit),
             NevoCommand::Show { code, all } => nevo_cmd::show(&db, code, all),
-            NevoCommand::Suggest { limit } => nevo_cmd::suggest(&vault, &db, limit),
+            NevoCommand::Suggest { limit } => nevo_cmd::suggest(library, &db, limit),
         },
         Command::Nutrition {
             recipe,
             all,
             with_optional,
-        } => nevo_cmd::nutrition(&vault, &db, &recipe, all, with_optional),
+        } => nevo_cmd::nutrition(library, &db, &recipe, all, with_optional),
+        Command::Serve { .. } => unreachable!("handled above"),
     }
 }
 
-fn list(vault: &Vault, args: &[String], plain: bool, write: bool) -> Result<ExitCode> {
-    let db = vault.food_db()?;
-    let pantry = vault.pantry()?;
+/// Find and parse a recipe given as a path or name.
+pub(crate) fn load(library: &Library, arg: &str) -> Result<Recipe> {
+    let path = library.find_recipe(arg)?;
+    Ok(library.parser.parse_file(&path)?)
+}
+
+fn list(library: &Library, args: &[String], plain: bool) -> Result<ExitCode> {
+    let db = library.food_db()?;
+    let pantry = library.pantry()?;
 
     let mut parsed = Vec::new();
     for arg in args {
         let (name, servings) = split_servings(arg);
-        let path = vault.find_recipe(name)?;
-        parsed.push((vault.parsers.parse_file(&path)?, servings));
+        parsed.push((load(library, name)?, servings));
     }
     let selections: Vec<_> = parsed
         .iter()
@@ -263,58 +209,38 @@ fn list(vault: &Vault, args: &[String], plain: bool, write: bool) -> Result<Exit
 
     if plain {
         println!("{}", render::plain(&list));
-    } else if write {
-        let date = chrono::Local::now().format("%Y-%m-%d").to_string();
-        let path = write_new(
-            &vault.root.join("Shopping"),
-            &date,
-            &render::markdown(&list, &date),
-        )?;
-        println!("{}", path.display());
     } else {
+        let date = chrono::Local::now().format("%Y-%m-%d");
         print!(
             "{}",
-            render::markdown(&list, &chrono::Local::now().format("%Y-%m-%d").to_string())
+            render::markdown(&list, &format!("Shopping list {date}"))
         );
     }
     Ok(ExitCode::SUCCESS)
 }
 
-/// Write `<dir>/<date>.md`, or `<date>-2.md`, `-3`, ... if it exists.
-/// Never overwrites: the app must not clobber a list someone is ticking off.
-fn write_new(dir: &Path, date: &str, contents: &str) -> Result<PathBuf> {
-    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
-    for n in 1.. {
-        let name = if n == 1 {
-            format!("{date}.md")
-        } else {
-            format!("{date}-{n}.md")
-        };
-        let path = dir.join(name);
-        match std::fs::OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&path)
-        {
-            Ok(mut f) => {
-                use std::io::Write;
-                f.write_all(contents.as_bytes())
-                    .with_context(|| format!("writing {}", path.display()))?;
-                return Ok(path);
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
-            Err(e) => return Err(e).with_context(|| format!("creating {}", path.display())),
-        }
+fn export(library: &Library, arg: &str, plain: bool) -> Result<ExitCode> {
+    let (name, servings) = split_servings(arg);
+    let recipe = load(library, name)?;
+    if servings.is_some() && recipe.servings.is_none() {
+        eprintln!(
+            "warning: {} has no `servings`, so it can't be scaled",
+            recipe.title
+        );
     }
-    unreachable!()
+    if plain {
+        print!("{}", render::recipe_plain(&recipe, servings));
+    } else {
+        print!("{}", render::recipe_markdown(&recipe, servings));
+    }
+    Ok(ExitCode::SUCCESS)
 }
 
-fn show(vault: &Vault, arg: &str) -> Result<ExitCode> {
-    let path = vault.find_recipe(arg)?;
-    let recipe = vault.parsers.parse_file(&path)?;
-    let db = vault.food_db()?;
+fn show(library: &Library, arg: &str) -> Result<ExitCode> {
+    let recipe = load(library, arg)?;
+    let db = library.food_db()?;
 
-    println!("{} ({})", recipe.title, path.display());
+    println!("{} ({})", recipe.title, recipe.path.display());
     match recipe.servings {
         Some(s) => println!("servings: {s}"),
         None => println!("servings: (not set — can't be scaled)"),
@@ -347,13 +273,13 @@ fn show(vault: &Vault, arg: &str) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-fn check(vault: &Vault) -> Result<ExitCode> {
-    let dir = vault.recipes_dir();
+fn check(library: &Library) -> Result<ExitCode> {
+    let dir = library.recipes_dir();
     if !dir.is_dir() {
         bail!("{} does not exist", dir.display());
     }
-    let db = vault.food_db()?;
-    let (recipes, errors) = vault.parsers.parse_dir(&dir)?;
+    let db = library.food_db()?;
+    let (recipes, errors) = library.parser.parse_dir(&dir)?;
 
     for e in &errors {
         eprintln!("error: {e}");
@@ -426,17 +352,5 @@ mod tests {
             split_servings("Recipes/Pasta.cook=2,5"),
             ("Recipes/Pasta.cook", Some(2.5))
         );
-    }
-
-    #[test]
-    fn write_new_never_overwrites() {
-        let dir = std::env::temp_dir().join(format!("grocery-test-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        let a = write_new(&dir, "2026-10-12", "one").unwrap();
-        let b = write_new(&dir, "2026-10-12", "two").unwrap();
-        assert!(a.ends_with("2026-10-12.md"));
-        assert!(b.ends_with("2026-10-12-2.md"));
-        assert_eq!(std::fs::read_to_string(&a).unwrap(), "one");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 }

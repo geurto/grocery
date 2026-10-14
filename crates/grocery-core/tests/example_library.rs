@@ -1,20 +1,21 @@
-//! End-to-end over `examples/vault`: parse every recipe, build a list,
-//! render it. If you change the example vault, update the expectations.
-
-use std::path::PathBuf;
+//! End-to-end over `examples/library`: parse every recipe, build a list,
+//! render it. If you change the example library, update the expectations.
 
 use grocery_core::aggregate::{build, Selection};
-use grocery_core::food::{FoodDb, Pantry};
-use grocery_core::parse::Parsers;
+use grocery_core::library::Library;
 use grocery_core::render;
 
-fn vault() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../examples/vault")
+fn library() -> Library {
+    Library::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/library"
+    ))
 }
 
 #[test]
-fn every_example_recipe_parses_and_non_recipes_are_skipped() {
-    let (recipes, errors) = Parsers::new().parse_dir(&vault().join("Recipes")).unwrap();
+fn every_example_recipe_parses() {
+    let lib = library();
+    let (recipes, errors) = lib.parser.parse_dir(&lib.recipes_dir()).unwrap();
     assert!(errors.is_empty(), "{errors:?}");
     let titles: Vec<_> = recipes.iter().map(|r| r.title.as_str()).collect();
     assert_eq!(
@@ -29,15 +30,16 @@ fn every_example_recipe_parses_and_non_recipes_are_skipped() {
 
 #[test]
 fn shopping_list_for_a_week() {
-    let parsers = Parsers::new();
-    let db = FoodDb::load(&vault().join("Food/aliases.yaml")).unwrap();
-    let pantry = Pantry::load(&vault().join("Food/pantry.yaml")).unwrap();
-    let pasta = parsers
-        .parse_file(&vault().join("Recipes/Pasta arrabbiata.cook"))
-        .unwrap();
-    let shakshuka = parsers
-        .parse_file(&vault().join("Recipes/Shakshuka.md"))
-        .unwrap();
+    let lib = library();
+    let db = lib.food_db().unwrap();
+    let pantry = lib.pantry().unwrap();
+    let parse = |name| {
+        lib.parser
+            .parse_file(&lib.find_recipe(name).unwrap())
+            .unwrap()
+    };
+    let pasta = parse("pasta arrabbiata");
+    let shakshuka = parse("Shakshuka");
 
     let list = build(
         &[
@@ -59,18 +61,9 @@ fn shopping_list_for_a_week() {
     assert_eq!(list.pantry_skipped, ["salt", "chili flakes"]);
 
     let expected = "\
----
-type: shopping-list
-created: 2026-10-12
-status: open
-recipes:
-  - \"[[Pasta arrabbiata]]\"
-  - \"[[Shakshuka]]\"
----
-
 # Shopping list 2026-10-12
 
-For: [[Pasta arrabbiata]] (2 servings), [[Shakshuka]] (2 servings)
+For: Pasta arrabbiata (2 servings), Shakshuka (2 servings)
 
 ## Groente & fruit
 
@@ -105,8 +98,10 @@ For: [[Pasta arrabbiata]] (2 servings), [[Shakshuka]] (2 servings)
 
 - [ ] olive oil — 38 ml
 
-> [!note]- From the pantry (not listed)
-> salt, chili flakes
+From the pantry (not listed): salt, chili flakes
 ";
-    assert_eq!(render::markdown(&list, "2026-10-12"), expected);
+    assert_eq!(
+        render::markdown(&list, "Shopping list 2026-10-12"),
+        expected
+    );
 }

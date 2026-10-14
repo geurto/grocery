@@ -1,8 +1,8 @@
-//! Food knowledge from the vault: `Food/aliases.yaml` and `Food/pantry.yaml`.
+//! Food knowledge from the library: `Food/aliases.yaml` and `Food/pantry.yaml`.
 //!
 //! `aliases.yaml` maps the many ways an ingredient gets written to one
 //! canonical food, and carries what's needed to turn "2 cloves" into grams.
-//! It's plain YAML on purpose so you can fix a bad mapping in Obsidian.
+//! It's plain YAML on purpose so you can fix a bad mapping in any editor.
 //!
 //! ```yaml
 //! aisles: [groente & fruit, brood, zuivel, pasta & rijst, blik & pot]
@@ -78,7 +78,7 @@ pub fn normalize_name(name: &str) -> String {
 
 impl FoodDb {
     /// Load from a file; a missing file is an empty database, not an error,
-    /// so a fresh vault works before any aliases exist.
+    /// so a fresh library works before any aliases exist.
     pub fn load(path: &Path) -> Result<Self> {
         match std::fs::read_to_string(path) {
             Ok(text) => Self::from_yaml(&text, path),

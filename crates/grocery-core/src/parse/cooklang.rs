@@ -2,22 +2,24 @@
 //!
 //! The crate does the parsing; this adapter only maps its model onto ours.
 //! Units are left as written (empty converter) because [`crate::units`]
-//! handles normalization for both formats, including Dutch units.
+//! handles normalization, including Dutch units.
 
+use std::fmt::Write as _;
 use std::path::Path;
 
-use cooklang::{quantity::Value, Converter, CooklangParser, Extensions, Modifiers};
+use cooklang::{quantity::Value, Converter, CooklangParser, Extensions, Item, Modifiers};
 
-use super::{title_from_path, RecipeSource};
+use super::title_from_path;
 use crate::error::{Error, Result};
-use crate::model::{Amount, Ingredient, Recipe};
+use crate::model::{Amount, Content, Ingredient, Recipe, Section};
 
+/// Building the inner parser is not free, so create one and reuse it.
 #[derive(Debug)]
-pub struct CooklangSource {
+pub struct Parser {
     parser: CooklangParser,
 }
 
-impl Default for CooklangSource {
+impl Default for Parser {
     fn default() -> Self {
         // ADVANCED_UNITS validates timer units against the converter, and with
         // an empty converter every `~{5%minutes}` becomes an error. We don't
@@ -52,8 +54,14 @@ fn text_quantity(text: &str, scalable: bool) -> Amount {
     }
 }
 
-impl RecipeSource for CooklangSource {
-    fn parse(&self, path: &Path, text: &str) -> Result<Recipe> {
+impl Parser {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Parse `text`, which was read from `path`. The path is only used for
+    /// error messages and as a fallback title.
+    pub fn parse(&self, path: &Path, text: &str) -> Result<Recipe> {
         let (parsed, report) =
             self.parser
                 .parse(text)
@@ -80,6 +88,14 @@ impl RecipeSource for CooklangSource {
             .servings()
             .and_then(|s| s.as_number())
             .map(f64::from);
+        let tags = parsed
+            .metadata
+            .tags()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|t| t.into_owned())
+            .collect();
+        let description = parsed.metadata.description().map(str::to_owned);
 
         let mut ingredients = Vec::new();
         // Walk definitions only; `@&onion` references contribute their
@@ -137,14 +153,60 @@ impl RecipeSource for CooklangSource {
             }
         }
 
+        let sections = parsed
+            .sections
+            .iter()
+            .map(|section| Section {
+                name: section.name.clone(),
+                content: section
+                    .content
+                    .iter()
+                    .map(|c| match c {
+                        cooklang::Content::Step(step) => Content::Step(step_text(step, &parsed)),
+                        cooklang::Content::Text(t) => Content::Note(t.trim().to_owned()),
+                    })
+                    .collect(),
+            })
+            .collect();
+
         Ok(Recipe {
             path: path.into(),
             title,
             servings,
+            tags,
+            description,
             ingredients,
+            sections,
             warnings,
         })
     }
+}
+
+/// A step as readable text: ingredients and cookware by name, timers and
+/// inline quantities as "10 minutes". Amounts are in the ingredient list.
+fn step_text(step: &cooklang::Step, recipe: &cooklang::Recipe) -> String {
+    let mut out = String::new();
+    for item in &step.items {
+        match item {
+            Item::Text { value } => out.push_str(value),
+            Item::Ingredient { index } => out.push_str(&recipe.ingredients[*index].display_name()),
+            Item::Cookware { index } => out.push_str(recipe.cookware[*index].display_name()),
+            Item::Timer { index } => {
+                let timer = &recipe.timers[*index];
+                match (&timer.quantity, &timer.name) {
+                    (Some(q), _) => {
+                        let _ = write!(out, "{q}");
+                    }
+                    (None, Some(name)) => out.push_str(name),
+                    (None, None) => {}
+                }
+            }
+            Item::InlineQuantity { index } => {
+                let _ = write!(out, "{}", recipe.inline_quantities[*index]);
+            }
+        }
+    }
+    out.trim().to_owned()
 }
 
 fn render_report(report: &cooklang::error::SourceReport, path: &Path, text: &str) -> String {
@@ -161,7 +223,7 @@ mod tests {
     use super::*;
 
     fn parse(text: &str) -> Recipe {
-        CooklangSource::default()
+        Parser::new()
             .parse(Path::new("Recipes/Test.cook"), text)
             .unwrap()
     }
@@ -257,8 +319,37 @@ mod tests {
     }
 
     #[test]
+    fn metadata_and_method() {
+        let r = parse(
+            "---\ntags: [pasta, quick]\ndescription: Weeknight dinner\n---\n\
+             Boil @spaghetti{400%g} in a #pot for ~{10%minutes}.\n\n\
+             > Use plenty of water.\n\n\
+             == Sauce ==\n\
+             Fry @olive oil{2%tbsp} gently.\n",
+        );
+        assert_eq!(r.tags, ["pasta", "quick"]);
+        assert_eq!(r.description.as_deref(), Some("Weeknight dinner"));
+        assert_eq!(
+            r.sections,
+            [
+                Section {
+                    name: None,
+                    content: vec![
+                        Content::Step("Boil spaghetti in a pot for 10 minutes.".into()),
+                        Content::Note("Use plenty of water.".into()),
+                    ],
+                },
+                Section {
+                    name: Some("Sauce".into()),
+                    content: vec![Content::Step("Fry olive oil gently.".into())],
+                },
+            ]
+        );
+    }
+
+    #[test]
     fn syntax_errors_carry_the_path() {
-        let err = CooklangSource::default()
+        let err = Parser::new()
             // a reference to an ingredient that was never defined
             .parse(Path::new("Recipes/Broken.cook"), "Add @&flour{100%g}.")
             .unwrap_err();

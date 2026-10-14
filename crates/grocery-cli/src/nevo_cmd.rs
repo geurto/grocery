@@ -6,13 +6,11 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use anyhow::{bail, Context, Result};
-use grocery_core::nutrition::{self, Basis, DisplayRow, Options};
+use grocery_core::library::Library;
+use grocery_core::nutrition::{Basis, Options};
 use grocery_store::{read_nevo, Hit, Store};
 
-use crate::Vault;
-
 /// `$XDG_DATA_HOME/grocery/grocery.sqlite`, else `~/.local/share/...`.
-/// Deliberately outside the vault: it's derived data and shouldn't sync.
 pub fn default_db_path() -> PathBuf {
     let base = std::env::var_os("XDG_DATA_HOME")
         .map(PathBuf::from)
@@ -155,38 +153,6 @@ pub fn search(db: &Path, query: &[String], limit: usize) -> Result<ExitCode> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Rows for `--all`: every NEVO nutrient in file order, salt after sodium,
-/// with EU reference intakes where the default table has them.
-fn all_rows(store: &Store) -> Result<Vec<DisplayRow>> {
-    let ri: BTreeMap<String, Option<f64>> = nutrition::default_rows()
-        .into_iter()
-        .map(|r| (r.code, r.ri))
-        .collect();
-    let mut rows = Vec::new();
-    for n in store.nutrients()? {
-        let is_na = n.code == "NA";
-        rows.push(DisplayRow {
-            ri: ri.get(&n.code).copied().flatten(),
-            label: truncate(n.name_en.trim(), 21),
-            unit: n.unit,
-            code: n.code,
-            indent: false,
-            section: None,
-        });
-        if is_na {
-            rows.push(DisplayRow {
-                code: "SALT".into(),
-                label: "Salt (from sodium)".into(),
-                unit: "g".into(),
-                ri: Some(6.0),
-                indent: false,
-                section: None,
-            });
-        }
-    }
-    Ok(rows)
-}
-
 pub fn show(db: &Path, code: u32, all: bool) -> Result<ExitCode> {
     let store = open_store(db)?;
     let info = store.require_nevo()?;
@@ -208,12 +174,7 @@ pub fn show(db: &Path, code: u32, all: bool) -> Result<ExitCode> {
         println!("note: {}", food.note);
     }
     println!("\nper {per}");
-    let rows = if all {
-        all_rows(&store)?
-    } else {
-        nutrition::default_rows()
-    };
-    for row in rows {
+    for row in store.display_rows(all)? {
         if let Some(s) = &row.section {
             println!("\n{s}");
         }
@@ -247,10 +208,10 @@ fn format_num(v: f64) -> String {
 }
 
 /// Candidates for every food in aliases.yaml that has no `nevo:` code yet.
-pub fn suggest(vault: &Vault, db: &Path, limit: usize) -> Result<ExitCode> {
+pub fn suggest(library: &Library, db: &Path, limit: usize) -> Result<ExitCode> {
     let store = open_store(db)?;
     store.require_nevo()?;
-    let foods = vault.food_db()?;
+    let foods = library.food_db()?;
     let missing: Vec<_> = foods
         .foods()
         .filter(|(_, info)| info.nevo.is_none())
@@ -298,36 +259,19 @@ pub fn suggest(vault: &Vault, db: &Path, limit: usize) -> Result<ExitCode> {
 }
 
 pub fn nutrition(
-    vault: &Vault,
+    library: &Library,
     db: &Path,
     recipe: &str,
     all: bool,
     with_optional: bool,
 ) -> Result<ExitCode> {
-    let path = vault.find_recipe(recipe)?;
-    let recipe = vault.parsers.parse_file(&path)?;
-    let foods = vault.food_db()?;
+    let recipe = crate::load(library, recipe)?;
+    let foods = library.food_db()?;
     let store = open_store(db)?;
-    let info = store.require_nevo()?;
-
-    let table = store.compositions(&nutrition::needed_codes(&recipe, &foods))?;
-    let n = nutrition::compute(
-        &recipe,
-        &foods,
-        &table,
-        Options {
-            include_optional: with_optional,
-        },
-    );
-    let rows = if all {
-        all_rows(&store)?
-    } else {
-        nutrition::default_rows()
+    let opts = Options {
+        include_optional: with_optional,
     };
-    print!(
-        "{}",
-        nutrition::render_text(&n, &table, &rows, &info.citation())
-    );
+    print!("{}", store.nutrition_report(&recipe, &foods, opts, all)?);
     for w in &recipe.warnings {
         eprintln!("warning: {w}");
     }

@@ -1,0 +1,23 @@
+[package]
+name = "grocery-server"
+description = "HTTP API: recipe index, shopping lists, exports, nutrition"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+grocery-core.workspace = true
+grocery-store.workspace = true
+anyhow.workspace = true
+axum.workspace = true
+chrono.workspace = true
+notify-debouncer-mini.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+http-body-util = "0.1"
+tempfile.workspace = true
+tower = { version = "0.5", features = ["util"] }

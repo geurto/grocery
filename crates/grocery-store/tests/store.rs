@@ -199,7 +199,7 @@ fn real_nevo_export() {
 fn end_to_end_nutrition() {
     use grocery_core::food::FoodDb;
     use grocery_core::nutrition::{self, Options};
-    use grocery_core::parse::Parsers;
+    use grocery_core::parse::Parser;
 
     let store = imported();
     let foods = FoodDb::from_yaml(
@@ -210,10 +210,10 @@ fn end_to_end_nutrition() {
         Path::new("aliases.yaml"),
     )
     .unwrap();
-    let recipe = Parsers::new()
-        .parse_str(
-            Path::new("Test.md"),
-            "---\nservings: 2\ningredients:\n  - 2 ui\n  - 400 g boerenkool\n  - 2 el olijfolie\n  - zout\n---\n",
+    let recipe = Parser::new()
+        .parse(
+            Path::new("Test.cook"),
+            "---\nservings: 2\n---\nMix @ui{2}, @boerenkool{400%g}, @olijfolie{2%el} and @zout.",
         )
         .unwrap();
 
@@ -227,8 +227,9 @@ fn end_to_end_nutrition() {
     // olive oil has no sodium value in the fixture → salt is a lower bound
     assert_eq!(n.per_serving("SALT").unwrap().1.missing_in, ["Olie olijf-"]);
 
-    let citation = store.require_nevo().unwrap().citation();
-    let text = nutrition::render_text(&n, &table, &nutrition::default_rows(), &citation);
+    let text = store
+        .nutrition_report(&recipe, &foods, Options::default(), false)
+        .unwrap();
     assert!(text.contains("No amount given: zout"), "{text}");
     assert!(text
         .trim_end()

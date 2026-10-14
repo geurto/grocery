@@ -1,30 +1,24 @@
-//! The normalized recipe model every parser produces.
+//! The normalized recipe model the parser produces.
 //!
-//! Downstream code (aggregation, nutrition, the web service) only ever sees
-//! these types, so the on-disk format can change without touching it.
+//! Downstream code (aggregation, nutrition, rendering, the web service) only
+//! ever sees these types, not the `cooklang` crate's.
 
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Recipe {
-    /// Path the recipe was read from (used for wikilinks and the index).
+    /// Path the recipe was read from.
     pub path: PathBuf,
     pub title: String,
     /// Servings the quantities are written for, if the recipe says.
     pub servings: Option<f64>,
+    pub tags: Vec<String>,
+    pub description: Option<String>,
     pub ingredients: Vec<Ingredient>,
+    /// The method, for exporting the recipe as text.
+    pub sections: Vec<Section>,
     /// Non-fatal problems found while parsing (unsupported syntax etc.).
     pub warnings: Vec<String>,
-}
-
-impl Recipe {
-    /// File name without extension; what Obsidian uses as the link target.
-    pub fn link_target(&self) -> String {
-        self.path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| self.title.clone())
-    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -36,9 +30,24 @@ pub struct Ingredient {
     pub note: Option<String>,
 }
 
+/// A `== Section ==` of a recipe; recipes without one have a single unnamed section.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Section {
+    pub name: Option<String>,
+    pub content: Vec<Content>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Content {
+    /// An instruction, as readable text ("Cook the spaghetti for 10 minutes").
+    Step(String),
+    /// A `> note` paragraph.
+    Note(String),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Amount {
-    /// No quantity given: `@salt`, `- salt`. Usually "to taste".
+    /// No quantity given: `@salt`. Usually "to taste".
     Unspecified,
     /// A quantity that is not a number: "a handful", "snufje".
     Text(String),
@@ -47,7 +56,7 @@ pub enum Amount {
         qty: f64,
         unit: Option<String>,
         /// `false` for fixed amounts that must not scale with servings
-        /// (Cooklang `@salt{=1%tsp}`, frontmatter `scale: false`).
+        /// (Cooklang `@salt{=1%tsp}`).
         scalable: bool,
     },
 }
