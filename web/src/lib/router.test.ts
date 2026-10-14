@@ -12,8 +12,15 @@ describe('routes', () => {
       { name: 'lists' as const },
       { name: 'list' as const, id: 3 },
       { name: 'new' as const },
+      { name: 'recipes' as const },
       { name: 'recipe' as const, path: 'soups/Tomato soup & bread.cook', servings: 3 },
       { name: 'recipe' as const, path: 'Shakshuka.cook', servings: undefined },
+      { name: 'cook' as const, path: 'Diner/Chana masala.cook', servings: 2 },
+      { name: 'plan' as const, day: undefined },
+      { name: 'plan' as const, day: '2026-10-14' },
+      { name: 'plan-add' as const, day: '2026-10-14', meal: 'dinner' as const },
+      { name: 'plan-add' as const, day: '2026-10-14', meal: null },
+      { name: 'plan-list' as const, start: '2026-10-12' },
     ]) {
       expect(parse(href(route))).toEqual(route);
     }

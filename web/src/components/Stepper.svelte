@@ -3,14 +3,32 @@
     value = $bindable(),
     min = 1,
     max = 99,
+    step = 1,
     label,
-  }: { value: number; min?: number; max?: number; label: string } = $props();
+    onchange,
+  }: {
+    value: number;
+    min?: number;
+    max?: number;
+    step?: number;
+    label: string;
+    /** Called after a tap, with the new value. */
+    onchange?: (value: number) => void;
+  } = $props();
+
+  function set(v: number) {
+    // Round away float noise: 0.1 + 0.2 steps.
+    value = Math.round(Math.min(max, Math.max(min, v)) * 100) / 100;
+    onchange?.(value);
+  }
+
+  const shown = $derived(value === 0.5 ? '½' : Number.isInteger(value) ? String(value) : value.toString().replace(/\.5$/, '½'));
 </script>
 
 <div class="stepper" role="group" aria-label={label}>
-  <button type="button" onclick={() => (value = Math.max(min, value - 1))} disabled={value <= min} aria-label="Fewer {label}">−</button>
-  <output aria-live="polite">{value}</output>
-  <button type="button" onclick={() => (value = Math.min(max, value + 1))} disabled={value >= max} aria-label="More {label}">+</button>
+  <button type="button" onclick={() => set(value - step)} disabled={value <= min} aria-label="Fewer {label}">−</button>
+  <output aria-live="polite" aria-label="{value} {label}">{shown}</output>
+  <button type="button" onclick={() => set(value + step)} disabled={value >= max} aria-label="More {label}">+</button>
 </div>
 
 <style>

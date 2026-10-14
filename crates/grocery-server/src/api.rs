@@ -17,13 +17,24 @@
 //! POST   /api/lists/{id}/items                  {"name": "toilet paper"}
 //! PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 //! DELETE /api/lists/{id}/items/{item}
+//! GET    /api/people
+//! POST   /api/people                            {"name": "Sam"}
+//! PATCH  /api/people/{id}                       {"name": "Sam"}
+//! DELETE /api/people/{id}                       and their plan
+//! GET    /api/plan?person=&from=&to=            entries, days as YYYY-MM-DD (inclusive)
+//! POST   /api/plan                              {"person", "day", "recipe", "meal"?, "portions"?}
+//! PATCH  /api/plan/{id}                         {"day"?, "meal"?: "dinner" | null, "portions"?}
+//! DELETE /api/plan/{id}
+//! GET    /api/plan/nutrition?person=&from=&to=  per-day totals, see `plans`
 //! ```
 //!
 //! `{path}` is the recipe's path relative to `Recipes/`, as listed by
 //! `/api/recipes` ("Pasta arrabbiata.cook", "soups/Tomato soup.cook").
 //!
 //! `/api/events` sends `{"type": "list", "id": 3}` when a list changes (or is
-//! created or deleted) and `{"type": "recipes"}` when the index changes; then
+//! created or deleted), `{"type": "plan", "person": 1}` when someone's plan
+//! changes, `{"type": "people"}` when people are added, renamed or removed,
+//! and `{"type": "recipes"}` when the index changes; then
 //! fetch what you show again. `{"type": "resync"}` means events were missed:
 //! refetch everything. Also refetch after reconnecting.
 
@@ -39,7 +50,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, patch, post};
 use axum::{Json, Router};
 use grocery_core::aggregate::{self, Selection};
-use grocery_core::model::{Content, Recipe};
+use grocery_core::model::{self, Content, Recipe, Step, StepItem};
 use grocery_core::nutrition::Options;
 use grocery_core::render;
 use grocery_store::{IndexedRecipe, ListStatus, ListSummary, StoredList};
@@ -48,9 +59,9 @@ use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::{Stream, StreamExt};
 
-use crate::{App, Event};
+use crate::{plans, App, Event};
 
-type Shared = Arc<App>;
+pub(crate) type Shared = Arc<App>;
 
 pub fn router(app: Shared) -> Router {
     Router::new()
@@ -66,6 +77,17 @@ pub fn router(app: Shared) -> Router {
             get(list).patch(update_list).delete(delete_list),
         )
         .route("/api/lists/{id}/items", post(add_item))
+        .route("/api/people", get(plans::people).post(plans::add_person))
+        .route(
+            "/api/people/{id}",
+            patch(plans::rename_person).delete(plans::delete_person),
+        )
+        .route("/api/plan", get(plans::plan).post(plans::add_entry))
+        .route("/api/plan/nutrition", get(plans::nutrition))
+        .route(
+            "/api/plan/{id}",
+            patch(plans::update_entry).delete(plans::delete_entry),
+        )
         .route(
             "/api/lists/{id}/items/{item}",
             patch(update_item).delete(delete_item),
@@ -79,22 +101,22 @@ pub fn router(app: Shared) -> Router {
 #[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
-    message: String,
+    pub(crate) message: String,
 }
 
 impl ApiError {
-    fn new(status: StatusCode, message: impl Into<String>) -> Self {
+    pub(crate) fn new(status: StatusCode, message: impl Into<String>) -> Self {
         Self {
             status,
             message: message.into(),
         }
     }
 
-    fn not_found(what: impl std::fmt::Display) -> Self {
+    pub(crate) fn not_found(what: impl std::fmt::Display) -> Self {
         Self::new(StatusCode::NOT_FOUND, format!("{what} not found"))
     }
 
-    fn bad_request(message: impl Into<String>) -> Self {
+    pub(crate) fn bad_request(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, message)
     }
 }
@@ -139,10 +161,10 @@ fn inner_error(e: &grocery_core::Error) -> ApiError {
     ApiError::new(status, e.to_string())
 }
 
-type ApiResult<T> = Result<T, ApiError>;
+pub(crate) type ApiResult<T> = Result<T, ApiError>;
 
 /// Run store and file work off the async threads.
-async fn blocking<T, F>(app: &Shared, f: F) -> ApiResult<T>
+pub(crate) async fn blocking<T, F>(app: &Shared, f: F) -> ApiResult<T>
 where
     T: Send + 'static,
     F: FnOnce(&App) -> ApiResult<T> + Send + 'static,
@@ -289,11 +311,36 @@ struct RecipeJson {
 
 #[derive(Serialize)]
 struct DisplayJson {
-    /// "Serves 2 (recipe: 4) · pasta, quick"
+    /// "Serves 2 (recipe: 4) · 40 min · pasta, quick"
     info: String,
     /// "spaghetti — 200 g"
     ingredients: Vec<String>,
+    time: TimeJson,
     sections: Vec<SectionJson>,
+}
+
+#[derive(Serialize)]
+struct TimeJson {
+    /// What the recipe's metadata says: "40 min", "prep 10 min, cook 30 min".
+    stated: Option<String>,
+    stated_minutes: Option<f64>,
+    /// Sum of all timers, in seconds: a lower bound on the time it takes.
+    timers: Option<SecondsJson>,
+}
+
+#[derive(Serialize)]
+struct SecondsJson {
+    min: f64,
+    max: f64,
+}
+
+impl From<model::Duration> for SecondsJson {
+    fn from(d: model::Duration) -> Self {
+        Self {
+            min: d.min,
+            max: d.max,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -303,18 +350,83 @@ struct SectionJson {
 }
 
 #[derive(Serialize)]
-#[serde(tag = "type", content = "text", rename_all = "lowercase")]
+#[serde(tag = "type", rename_all = "lowercase")]
 enum StepJson {
-    Step(String),
-    Note(String),
+    Step {
+        /// The step as plain text.
+        text: String,
+        items: Vec<StepItemJson>,
+        /// Sum of this step's timers.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        seconds: Option<SecondsJson>,
+    },
+    Note {
+        text: String,
+    },
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type", rename_all = "lowercase")]
+enum StepItemJson {
+    Text {
+        text: String,
+    },
+    /// With the amount for this step, scaled.
+    Ingredient {
+        name: String,
+        amount: Option<String>,
+    },
+    Cookware {
+        name: String,
+    },
+    Timer {
+        name: Option<String>,
+        text: String,
+        seconds: Option<SecondsJson>,
+    },
+    Quantity {
+        text: String,
+    },
 }
 
 impl DisplayJson {
     fn new(recipe: &Recipe, servings: Option<f64>) -> Self {
         let view = render::RecipeView::new(recipe, servings);
+        let factor = view.factor;
+        let step = |step: &Step| StepJson::Step {
+            text: step.text(),
+            seconds: step.duration().map(Into::into),
+            items: step
+                .items
+                .iter()
+                .map(|item| match item {
+                    StepItem::Text(t) => StepItemJson::Text { text: t.clone() },
+                    StepItem::Ingredient { name, amount } => StepItemJson::Ingredient {
+                        name: name.clone(),
+                        amount: render::amount_text(amount, factor),
+                    },
+                    StepItem::Cookware(name) => StepItemJson::Cookware { name: name.clone() },
+                    StepItem::Timer {
+                        name,
+                        text,
+                        duration,
+                    } => StepItemJson::Timer {
+                        name: name.clone(),
+                        text: text.clone(),
+                        seconds: duration.map(Into::into),
+                    },
+                    StepItem::Quantity(t) => StepItemJson::Quantity { text: t.clone() },
+                })
+                .collect(),
+        };
         Self {
             info: view.info,
             ingredients: view.ingredients,
+            time: TimeJson {
+                stated: recipe.time.as_ref().map(render::time_text),
+                stated_minutes: recipe.time.and_then(|t| t.minutes()),
+                timers: recipe.timers_total().map(Into::into),
+            },
             sections: recipe
                 .sections
                 .iter()
@@ -324,8 +436,8 @@ impl DisplayJson {
                         .content
                         .iter()
                         .map(|c| match c {
-                            Content::Step(t) => StepJson::Step(t.clone()),
-                            Content::Note(t) => StepJson::Note(t.clone()),
+                            Content::Step(s) => step(s),
+                            Content::Note(t) => StepJson::Note { text: t.clone() },
                         })
                         .collect(),
                 })
@@ -368,7 +480,7 @@ async fn search_recipes(
 
 /// Parse a recipe by its index path. Going through the index means only
 /// files under `Recipes/` can be read, whatever the URL says.
-fn load_recipe(app: &App, path: &str) -> ApiResult<(IndexedRecipe, Recipe)> {
+pub(crate) fn load_recipe(app: &App, path: &str) -> ApiResult<(IndexedRecipe, Recipe)> {
     let entry = app
         .store()
         .recipe(path)?

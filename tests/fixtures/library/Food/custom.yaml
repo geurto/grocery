@@ -1,0 +1,15 @@
+# Your own nutrition values, per 100 g (or 100 ml), for foods NEVO lacks.
+# Use a food with `custom: <name>` in aliases.yaml. Leave out what the
+# package doesn't list: missing means unknown, not 0.
+foods:
+  fresh coriander:
+    source: USDA FoodData Central, "Coriander (cilantro) leaves, raw" (example values)
+    energy_kcal: 23
+    protein: 2.13
+    fat: 0.52
+    saturated_fat: 0.014
+    carbohydrate: 3.67
+    sugars: 0.87
+    fibre: 2.8
+    sodium_mg: 46
+    nutrients: { VITC: 27 }

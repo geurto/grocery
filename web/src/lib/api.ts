@@ -1,6 +1,16 @@
 // Thin wrapper around the server's JSON API.
 
-import type { List, ListStatus, ListSummary, Recipe, RecipeSummary } from './types';
+import type {
+  List,
+  ListStatus,
+  ListSummary,
+  Meal,
+  Person,
+  PlanEntry,
+  PlanNutrition,
+  Recipe,
+  RecipeSummary,
+} from './types';
 
 /** The server answered with an error status. */
 export class HttpError extends Error {
@@ -71,4 +81,18 @@ export const api = {
       `/api/recipes/${enc(path)}?format=${format}${servings ? `&servings=${servings}` : ''}`,
     ),
   nutrition: (path: string) => request<string>('GET', `/api/nutrition/${enc(path)}`),
+
+  people: () => request<Person[]>('GET', '/api/people'),
+  addPerson: (name: string) => request<Person>('POST', '/api/people', { name }),
+  renamePerson: (id: number, name: string) => request<void>('PATCH', `/api/people/${id}`, { name }),
+  deletePerson: (id: number) => request<void>('DELETE', `/api/people/${id}`),
+  plan: (person: number, from: string, to: string) =>
+    request<PlanEntry[]>('GET', `/api/plan?person=${person}&from=${from}&to=${to}`),
+  planNutrition: (person: number, from: string, to: string) =>
+    request<PlanNutrition>('GET', `/api/plan/nutrition?person=${person}&from=${from}&to=${to}`),
+  addEntry: (entry: { person: number; day: string; meal: Meal | null; recipe: string; portions?: number }) =>
+    request<PlanEntry>('POST', '/api/plan', entry),
+  updateEntry: (id: number, change: { day?: string; meal?: Meal | null; portions?: number }) =>
+    request<PlanEntry>('PATCH', `/api/plan/${id}`, change),
+  deleteEntry: (id: number) => request<void>('DELETE', `/api/plan/${id}`),
 };

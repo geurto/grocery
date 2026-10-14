@@ -8,7 +8,7 @@
 use std::fmt::Write as _;
 
 use crate::aggregate::{Item, Qty, ShoppingList};
-use crate::model::{Amount, Content, Recipe};
+use crate::model::{Amount, Content, Recipe, RecipeTime};
 use crate::units::Dim;
 
 /// Heading used for items without an aisle.
@@ -159,6 +159,8 @@ pub struct RecipeView<'a> {
     pub info: String,
     /// "spaghetti — 200 g", one per ingredient name, scaled.
     pub ingredients: Vec<String>,
+    /// What amounts are multiplied by.
+    pub factor: f64,
 }
 
 impl<'a> RecipeView<'a> {
@@ -178,7 +180,8 @@ impl<'a> RecipeView<'a> {
             (_, None) => (1.0, None),
         };
         let tags = (!recipe.tags.is_empty()).then(|| recipe.tags.join(", "));
-        let info = [serves, tags]
+        let time = recipe.time.as_ref().map(time_text);
+        let info = [serves, time, tags]
             .into_iter()
             .flatten()
             .collect::<Vec<_>>()
@@ -187,6 +190,7 @@ impl<'a> RecipeView<'a> {
             recipe,
             info,
             ingredients: ingredient_lines(recipe, factor),
+            factor,
         }
     }
 
@@ -227,9 +231,9 @@ impl<'a> RecipeView<'a> {
             let mut n = 0;
             for content in &section.content {
                 match content {
-                    Content::Step(text) => {
+                    Content::Step(step) => {
                         n += 1;
-                        let _ = writeln!(out, "{n}. {text}\n");
+                        let _ = writeln!(out, "{n}. {}\n", step.text());
                     }
                     Content::Note(text) if markdown => {
                         let _ = writeln!(out, "> {text}\n");
@@ -312,6 +316,44 @@ fn ingredient_lines(recipe: &Recipe, factor: f64) -> Vec<String> {
             s
         })
         .collect()
+}
+
+/// An ingredient amount for reading, scaled by `factor`: "200 g", "2",
+/// "a handful". `None` when the recipe gives no amount.
+pub fn amount_text(amount: &Amount, factor: f64) -> Option<String> {
+    match amount.scaled(factor) {
+        Amount::Unspecified => None,
+        Amount::Text(t) => Some(t),
+        Amount::Value {
+            qty, unit: Some(u), ..
+        } => Some(format!("{} {u}", fmt_amount(qty))),
+        Amount::Value {
+            qty, unit: None, ..
+        } => Some(fmt_amount(qty)),
+    }
+}
+
+/// "40 min", "1 h 15 min".
+pub fn minutes_text(minutes: f64) -> String {
+    let m = minutes.round() as u64;
+    match (m / 60, m % 60) {
+        (0, m) => format!("{m} min"),
+        (h, 0) => format!("{h} h"),
+        (h, m) => format!("{h} h {m} min"),
+    }
+}
+
+/// "40 min", or "prep 10 min, cook 30 min" when that's what the recipe says.
+pub fn time_text(time: &RecipeTime) -> String {
+    match (time.total, time.prep, time.cook) {
+        (Some(t), _, _) => minutes_text(t),
+        (None, p, c) => [p.map(|p| ("prep", p)), c.map(|c| ("cook", c))]
+            .into_iter()
+            .flatten()
+            .map(|(what, m)| format!("{what} {}", minutes_text(m)))
+            .collect::<Vec<_>>()
+            .join(", "),
+    }
 }
 
 /// Recipe amounts as written, rounded for reading: 266.67 g → 267, 1.333 → 1.33.
@@ -442,7 +484,7 @@ From the pantry (not listed): salt
         crate::parse::Parser::new()
             .parse(
                 std::path::Path::new("Recipes/Pasta.cook"),
-                "---\nservings: 4\ntags: [pasta]\n---\n\
+                "---\nservings: 4\ntime: 25 min\ntags: [pasta]\n---\n\
                  Boil @spaghetti{400%g} with @salt.\n\n\
                  > Save some pasta water.\n\n\
                  == Sauce ==\n\
@@ -457,7 +499,7 @@ From the pantry (not listed): salt
         let expected = "\
 # Pasta
 
-Serves 4 · pasta
+Serves 4 · 25 min · pasta
 
 ## Ingredients
 
@@ -484,11 +526,28 @@ Serves 4 · pasta
     }
 
     #[test]
+    fn times_and_amounts_for_reading() {
+        assert_eq!(minutes_text(75.0), "1 h 15 min");
+        assert_eq!(minutes_text(120.0), "2 h");
+        let t = RecipeTime {
+            prep: Some(10.0),
+            cook: Some(30.0),
+            ..Default::default()
+        };
+        assert_eq!(time_text(&t), "prep 10 min, cook 30 min");
+        assert_eq!(
+            amount_text(&Amount::value(400.0, Some("g")), 0.5).as_deref(),
+            Some("200 g")
+        );
+        assert_eq!(amount_text(&Amount::Unspecified, 2.0), None);
+    }
+
+    #[test]
     fn recipe_plain_scaled() {
         let text = recipe_plain(&recipe(), Some(3.0));
         assert!(
             text.starts_with(
-                "Pasta\n\nServes 3 (recipe: 4) · pasta\n\nIngredients\n\n• spaghetti — 300 g\n"
+                "Pasta\n\nServes 3 (recipe: 4) · 25 min · pasta\n\nIngredients\n\n• spaghetti — 300 g\n"
             ),
             "{text}"
         );

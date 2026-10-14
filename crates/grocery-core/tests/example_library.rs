@@ -1,4 +1,4 @@
-//! End-to-end over `examples/library`: parse every recipe, build a list,
+//! End-to-end over `tests/fixtures/library`: parse every recipe, build a list,
 //! render it. If you change the example library, update the expectations.
 
 use grocery_core::aggregate::{build, Selection};
@@ -8,7 +8,7 @@ use grocery_core::render;
 fn library() -> Library {
     Library::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../examples/library"
+        "/../../tests/fixtures/library"
     ))
 }
 
@@ -26,6 +26,20 @@ fn every_example_recipe_parses() {
         assert!(r.warnings.is_empty(), "{}: {:?}", r.title, r.warnings);
         assert!(r.servings.is_some(), "{} has servings", r.title);
     }
+}
+
+/// `examples/library` holds real recipes that change; they must parse, but
+/// no expectations beyond that.
+#[test]
+fn every_recipe_in_examples_parses() {
+    let lib = Library::new(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../examples/library"
+    ));
+    let (_, errors) = lib.parser.parse_dir(&lib.recipes_dir()).unwrap();
+    assert!(errors.is_empty(), "{errors:?}");
+    lib.food_db().unwrap();
+    lib.custom_foods().unwrap();
 }
 
 #[test]

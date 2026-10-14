@@ -1,18 +1,20 @@
 # grocery
 
-Shopping lists, recipe exports and nutrition estimates from a library of
-[Cooklang](https://cooklang.org) recipes: a CLI, a small web service, and a
-phone app (PWA) for shopping together, with or without signal.
+Shopping lists, recipe exports, a cooking mode, meal plans and nutrition
+estimates from a library of [Cooklang](https://cooklang.org) recipes: a CLI,
+a small web service, and a phone app (PWA) for shopping together, with or
+without signal.
 
 ```
 crates/
   grocery-core/    parse → resolve → aggregate → render, and nutrition (pure)
-  grocery-store/   SQLite: NEVO data, recipe index, saved shopping lists
+  grocery-store/   SQLite: NEVO data, recipe index, shopping lists, meal plans
   grocery-server/  Axum service: watches Recipes/, JSON API, live events,
                    md/txt exports, and serves the web app
   grocery-cli/     the `grocery` binary (including `grocery serve`)
 web/               the web app: Svelte 5 + TypeScript, built with Vite
-examples/library/  a small library to try it on (also used by the tests)
+examples/library/  a library to try it on (your recipes; they only need to parse)
+tests/fixtures/library/  the fixed library the tests run against
 ```
 
 ## Quick start
@@ -64,6 +66,15 @@ Season with @salt. Serve with @basil{a handful}.
 `servings` is needed to scale; `title` defaults to the file name. Hidden
 ingredients (`@-water`) are never put on a list.
 
+**Time.** Timers (`~{20%minutes}`, `~{2-3%minuten}`, `~{1%uur}`) are shown
+in the steps, and tapping one in cooking mode starts it. For the whole
+recipe, add `time: 40 min` (or `prep time:` / `cook time:`) to the
+metadata; `1 uur 15 min`, `1h15m` and a bare `75` (minutes) also work, and
+`tijd`, `bereidingstijd`, `voorbereidingstijd` and `kooktijd` are read too.
+Nothing is estimated: without `time:` the app shows the sum of the timers,
+labelled as such, since chopping and "fry until golden" have no timer. A
+`time:` it can't read is a warning, not a guess.
+
 ## Web service
 
 ```sh
@@ -97,24 +108,40 @@ DELETE /api/lists/{id}
 POST   /api/lists/{id}/items                  {"name": "toilet paper"}
 PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 DELETE /api/lists/{id}/items/{item}
+GET    /api/people
+POST   /api/people                            {"name": "Sam"}
+PATCH  /api/people/{id}                       {"name": "Sam"}
+DELETE /api/people/{id}                       and their plan
+GET    /api/plan?person=&from=&to=            entries; days as YYYY-MM-DD, inclusive
+POST   /api/plan                              {"person", "day", "recipe", "meal"?, "portions"?}
+PATCH  /api/plan/{id}                         {"day"?, "meal"?: "dinner" | null, "portions"?}
+DELETE /api/plan/{id}
+GET    /api/plan/nutrition?person=&from=&to=  per-day totals (JSON, with the NEVO citation)
 ```
+
+A recipe's JSON has a `display` part for showing it: scaled ingredient
+lines, the stated time and the sum of its timers, and the method as steps
+whose `items` keep ingredients (with this step's amount, scaled), cookware
+and timers (with `seconds`) apart from the text.
 
 `{path}` is relative to `Recipes/`, as `/api/recipes` lists it (URL-encode
 spaces). Only indexed files can be read through it. For example:
 
 ```sh
 curl -s localhost:8080/api/lists -H 'content-type: application/json' \
-  -d '{"recipes":[{"path":"Pasta arrabbiata.cook","servings":2},{"path":"Shakshuka.cook"}]}'
+  -d '{"recipes":[{"path":"Diner/Chana masala.cook","servings":2},{"path":"Diner/Vega paella.cook"}]}'
 curl -s 'localhost:8080/api/lists/1?format=txt'        # paste into Signal
 curl -s 'localhost:8080/api/lists/1?format=md' > list.md
-curl -s 'localhost:8080/api/recipes/Shakshuka.cook?format=md&servings=4'
+curl -s 'localhost:8080/api/recipes/Diner/Chana%20masala.cook?format=md&servings=2'
 ```
 
 A saved list is a snapshot: editing a recipe later doesn't change a list
 you're shopping from. Make a new list to pick up the change.
 
 `/api/events` streams `{"type":"list","id":3}` whenever a list is created,
-changed or deleted, and `{"type":"recipes"}` when the index changes. Events
+changed or deleted, `{"type":"plan","person":1}` when someone's plan
+changes, `{"type":"people"}`, and `{"type":"recipes"}` when the index
+changes. Events
 carry no data: clients refetch what they show. `{"type":"resync"}` means a
 client fell behind and should refetch everything.
 
@@ -149,7 +176,7 @@ A release build without `web/dist` still compiles and runs, but shows a
 "not built" page at `/`. Debug builds read `web/dist` from disk, so a new
 `npm run build` shows up without recompiling.
 
-What it does:
+Three tabs: **Lists**, **Recipes** and **Plan**.
 
 - **Lists overview**: open lists with progress; done lists folded away.
 - **Shopping**: items grouped by aisle in walking order. Tap to tick;
@@ -158,7 +185,30 @@ What it does:
   keep the screen on, mark done, rename, delete.
 - **New list**: search recipes by title, tag or ingredient, set servings,
   and make the list.
-- **Recipe**: scaled ingredients, method, and nutrition per serving.
+- **Recipes**: by folder (`Diner/`, `Ontbijt/`), searchable.
+- **Recipe**: scaled ingredients; the method with each step's amounts in
+  place and timers as chips; time; nutrition per serving.
+- **Cooking mode** ("Start cooking"): big steps, one highlighted at a time;
+  tap the number to mark a step done. A "Set out" checklist for the
+  ingredients. The screen stays on. Tap a timer to start it (a range rings at
+  the short end): several can run at once, with +1 min, and they keep going
+  across screens (a pill shows the next one) and reloads, because a timer is
+  stored as the time it ends. When one goes off: a banner, vibration, a beep,
+  and a notification if the app is in the background and you allowed them.
+  A timer can't wake a phone whose browser has fully closed the app.
+  Progress is kept on that device for two days, so you can leave and come
+  back ("Continue cooking").
+- **Plan**: one plan per person, so each sees their own calories. Per day:
+  recipes by meal, with portions in halves (a portion is one of the
+  recipe's servings). Below that, the day's energy, macros, salt, and
+  (folded) vitamins and minerals as amounts and % of the EU reference
+  intakes, with the same honesty as the recipe report: `*` marks a lower
+  bound and says which foods have no value; recipes without `servings`
+  aren't counted and say so; low ingredient coverage is flagged. The week
+  strip shows each day's kcal. **Shopping list for this week** sums
+  everyone's portions per recipe for the days you pick, so two people eating
+  a curry, or one person eating the leftovers tomorrow, both buy for two
+  servings.
 
 **Shopping together.** Both phones stay connected to `/api/events`, so a
 tick on one shows on the other within a second. Ticks set "checked" or
@@ -171,7 +221,8 @@ the app comes back to the foreground, and every 15 s). The header shows
 *Live*, *Offline* or *N to sync*. Items added offline get their real id once
 sent, and ticks made on them in the meantime follow. Lists, recipes you've
 opened and the app itself are cached, so the app also opens offline. Making
-a new list, renaming, deleting and nutrition need the server.
+a new list, renaming, deleting, nutrition and changing a plan need the
+server (plans you've looked at can be read offline).
 
 **HTTPS is required** for the offline part and for installing to the home
 screen: browsers only allow service workers on HTTPS (or `localhost`). Over
@@ -186,7 +237,7 @@ Home Screen" (iOS: Share menu; Android: browser menu).
 ```sh
 cargo run -- --library examples/library serve   # API on :8080
 cd web && npm run dev                           # app on :5173, /api proxied
-npm test          # vitest: offline sync, formatting, routes
+npm test          # vitest: offline sync, formatting, routes, timers, plans
 npm run check     # svelte-check (types)
 ```
 
@@ -200,12 +251,14 @@ override with `--db` or `GROCERY_DB`. It holds:
 
 - NEVO data: rebuilt by `import-nevo`.
 - The recipe index: rebuilt from the files at every start.
-- **Saved shopping lists**: these exist nowhere else. If you care about
-  them, include the database in your backup. It runs in WAL mode, so copy it
+- **Saved shopping lists and meal plans**: these exist nowhere else. If you
+  care about them, include the database in your backup. It runs in WAL mode, so copy it
   with `sqlite3 grocery.sqlite ".backup backup.sqlite"` rather than `cp`
   while the service is running.
 
-A database from step 3 is upgraded in place the first time it's opened.
+An older database is upgraded in place the first time it's opened (v3 adds
+the plan tables). Downgrading isn't supported: an older build refuses a
+newer database rather than guess.
 
 ## Nutrition (needs the NEVO export)
 
@@ -373,6 +426,10 @@ the real export is only read by an ignored test
   lock" warning is filtered. Revisit when upgrading the crate.
 
 ## Ideas
+
+- Single foods in a plan ("a banana", "150 g yoghurt") next to recipes.
+- Moving a plan entry to another day (the API can; the app can't yet).
+- Recipe times in the recipe list (needs the time in the index).
 
 - Reordering aisles from the app (they come from `aliases.yaml` now).
 - A "frequently added" suggestion list for hand-added items.

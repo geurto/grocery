@@ -8,6 +8,7 @@ rust-version.workspace = true
 
 [dependencies]
 grocery-core.workspace = true
+chrono.workspace = true
 rusqlite.workspace = true
 csv.workspace = true
 thiserror.workspace = true

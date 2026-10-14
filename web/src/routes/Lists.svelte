@@ -128,7 +128,7 @@
   .fab {
     position: fixed;
     right: max(1rem, env(safe-area-inset-right));
-    bottom: calc(1rem + env(safe-area-inset-bottom));
+    bottom: calc(1rem + var(--tabbar) + env(safe-area-inset-bottom));
     min-height: 54px;
     padding: 0 1.3rem;
     box-shadow: 0 6px 20px rgb(0 0 0 / 0.18);

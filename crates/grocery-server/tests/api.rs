@@ -1,4 +1,4 @@
-//! The HTTP API against a scratch copy of `examples/library`.
+//! The HTTP API against a scratch copy of `tests/fixtures/library`.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -22,7 +22,7 @@ impl Fixture {
     fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         copy_dir(
-            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/library"),
+            &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/fixtures/library"),
             dir.path(),
         );
         let app = App::new(Library::new(dir.path()), Store::open_in_memory().unwrap());
@@ -407,6 +407,25 @@ async fn recipe_json_has_a_display_version() {
         .unwrap()
         .starts_with("Fry ui, knoflook"));
 
+    // Steps carry their ingredients (scaled amounts) and timers.
+    let step = &display["sections"][0]["steps"][1];
+    assert_eq!(
+        step["items"][0],
+        json!({ "type": "text", "text": "Pour in " })
+    );
+    assert_eq!(
+        step["items"][1],
+        json!({ "type": "ingredient", "name": "passata", "amount": "1000 g" })
+    );
+    assert_eq!(step["items"][3]["type"], "timer");
+    assert_eq!(
+        step["items"][3]["seconds"],
+        json!({ "min": 600.0, "max": 600.0 })
+    );
+    assert_eq!(step["seconds"], json!({ "min": 600.0, "max": 600.0 }));
+    assert_eq!(display["time"]["stated"], json!(null));
+    assert_eq!(display["time"]["timers"]["min"], 600.0);
+
     // The list endpoint stays light.
     let (_, all) = f.json(Method::GET, "/api/recipes", None).await;
     assert!(all[0].get("display").is_none());
@@ -439,4 +458,209 @@ async fn a_broken_custom_yaml_is_reported_not_ignored() {
         err["error"].as_str().unwrap().contains("custom.yaml"),
         "{err}"
     );
+}
+
+/// A fixture with the synthetic NEVO data from grocery-store's tests and a
+/// recipe whose foods map onto it.
+fn with_nevo() -> Fixture {
+    let fixtures = Path::new(env!("CARGO_MANIFEST_DIR")).join("../grocery-store/tests/fixtures");
+    let data = grocery_store::read_nevo(
+        std::fs::File::open(fixtures.join("nevo_synthetic.csv")).unwrap(),
+        Some(std::fs::File::open(fixtures.join("nutrients_synthetic.csv")).unwrap()),
+    )
+    .unwrap();
+    let mut store = Store::open_in_memory().unwrap();
+    store.import_nevo(&data).unwrap();
+
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path();
+    std::fs::create_dir_all(root.join("Recipes")).unwrap();
+    std::fs::create_dir_all(root.join("Food")).unwrap();
+    std::fs::write(
+        root.join("Food/aliases.yaml"),
+        "foods:\n  onion: { nevo: 1, piece_g: 100, synonyms: [ui] }\n  \
+         kale: { nevo: 2, synonyms: [boerenkool] }\n  \
+         olive oil: { nevo: 4, density: 0.9, synonyms: [olijfolie] }\n",
+    )
+    .unwrap();
+    std::fs::write(
+        root.join("Recipes/Kale.cook"),
+        "---\nservings: 2\n---\nMix @ui{2}, @boerenkool{400%g} and @olijfolie{2%el}.",
+    )
+    .unwrap();
+    std::fs::write(root.join("Recipes/Loose.cook"), "Eat @ui{1}.").unwrap();
+    let app = App::new(Library::new(root), store);
+    app.sync(false).unwrap();
+    Fixture { _dir: dir, app }
+}
+
+#[tokio::test]
+async fn people_and_plans() {
+    let f = with_nevo();
+    let mut events = f
+        .router()
+        .oneshot(Request::get("/api/events").body(Body::empty()).unwrap())
+        .await
+        .unwrap()
+        .into_body();
+
+    let (status, me) = f
+        .json(
+            Method::POST,
+            "/api/people",
+            Some(json!({ "name": "Peter" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(next_event(&mut events).await, json!({ "type": "people" }));
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/people",
+            Some(json!({ "name": "peter" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST, "names are unique");
+    let me = me["id"].as_i64().unwrap();
+
+    let add = |day: &str, recipe: &str, portions: f64| json!({ "person": me, "day": day, "meal": "dinner", "recipe": recipe, "portions": portions });
+    let (status, entry) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(add("2026-10-14", "Kale.cook", 1.0)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(entry["title"], "Kale");
+    assert_eq!(
+        next_event(&mut events).await,
+        json!({ "type": "plan", "person": me })
+    );
+    let (_, second) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(add("2026-10-15", "Kale.cook", 1.0)),
+        )
+        .await;
+    f.json(
+        Method::POST,
+        "/api/plan",
+        Some(add("2026-10-15", "Loose.cook", 1.0)),
+    )
+    .await;
+
+    // Mistakes are clear errors.
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(add("2026-10-15", "Nope.cook", 1.0)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(add("2026-02-30", "Kale.cook", 1.0)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(add("2026-10-15", "Kale.cook", 0.0)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // 1.5 portions, and no meal any more.
+    let (status, changed) = f
+        .json(
+            Method::PATCH,
+            &format!("/api/plan/{}", second["id"]),
+            Some(json!({ "portions": 1.5, "meal": null })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (changed["portions"].as_f64(), &changed["meal"]),
+        (Some(1.5), &Value::Null)
+    );
+
+    let (_, plan) = f
+        .json(
+            Method::GET,
+            &format!("/api/plan?person={me}&from=2026-10-12&to=2026-10-18"),
+            None,
+        )
+        .await;
+    assert_eq!(plan.as_array().unwrap().len(), 3);
+
+    let (status, n) = f
+        .json(
+            Method::GET,
+            &format!("/api/plan/nutrition?person={me}&from=2026-10-14&to=2026-10-16"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{n}");
+    assert!(n["citation"]
+        .as_str()
+        .unwrap()
+        .contains("NEVO online version 2099/1.0"));
+    assert_eq!(n["rows"][0]["code"], "ENERCC");
+    let days = n["days"].as_array().unwrap();
+    assert_eq!(days.len(), 3);
+    // (200 g × 25 + 400 g × 30 + 27 g × 880) / 100 / 2 servings
+    let per_portion = (50.0 + 120.0 + 237.6) / 2.0;
+    let kcal = |d: usize| days[d]["nutrients"]["ENERCC"]["value"].as_f64().unwrap();
+    assert!((kcal(0) - per_portion).abs() < 1e-9);
+    assert!((kcal(1) - 1.5 * per_portion).abs() < 1e-9);
+    assert_eq!(days[2]["nutrients"], json!({}));
+    // Olive oil has no sodium value: salt is a lower bound, and says why.
+    assert_eq!(days[0]["nutrients"]["SALT"]["lower_bound"], true);
+    assert_eq!(days[0]["missing"][0]["food"], "Olie olijf-");
+    // A recipe without servings can't be portioned: said, not guessed.
+    let entry = |id: &Value| {
+        days[1]["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == *id)
+            .unwrap()
+            .clone()
+    };
+    let loose = entry(&json!(3));
+    assert!(
+        loose["problem"].as_str().unwrap().contains("serves"),
+        "{loose}"
+    );
+    assert!((entry(&second["id"])["kcal"].as_f64().unwrap() - 1.5 * per_portion).abs() < 1e-9);
+
+    let (status, _) = f
+        .json(
+            Method::GET,
+            &format!("/api/plan/nutrition?person={me}&from=2026-10-14&to=2026-01-01"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Removing a person removes their plan.
+    let (status, _) = f
+        .json(Method::DELETE, &format!("/api/people/{me}"), None)
+        .await;
+    assert_eq!(status, StatusCode::NO_CONTENT);
+    let (_, plan) = f
+        .json(
+            Method::GET,
+            &format!("/api/plan?person={me}&from=2026-10-12&to=2026-10-18"),
+            None,
+        )
+        .await;
+    assert_eq!(plan, json!([]));
 }

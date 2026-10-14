@@ -3,29 +3,12 @@
 // the live connection that tells us when someone else changed something.
 
 import { api, HttpError, OfflineError } from './api';
+import { load, save } from './storage';
 import { applyOps, next, settle, type Op, type Outcome } from './sync';
 import type { List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
 
-const PREFIX = 'grocery:v1:';
 const RECIPE_CACHE_SIZE = 40;
 const RETRY_MS = 15_000;
-
-function load<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(PREFIX + key);
-    return raw === null ? fallback : (JSON.parse(raw) as T);
-  } catch {
-    return fallback;
-  }
-}
-
-function save(key: string, value: unknown) {
-  try {
-    localStorage.setItem(PREFIX + key, JSON.stringify(value));
-  } catch {
-    // Storage full or blocked: the app still works, just not offline.
-  }
-}
 
 const recipeKey = (path: string, servings?: number) => `${path}|${servings ?? ''}`;
 
@@ -50,6 +33,17 @@ class Store {
   #versions = new Map<number, number>();
   #refreshing = new Map<number, Promise<void>>();
   #events: EventSource | undefined;
+  #listeners = new Set<(event: ServerEvent) => void>();
+
+  /** Hear about server events (and `resync` when everything should be refetched). */
+  on(listener: (event: ServerEvent) => void): () => void {
+    this.#listeners.add(listener);
+    return () => this.#listeners.delete(listener);
+  }
+
+  #emit(event: ServerEvent) {
+    for (const l of this.#listeners) l(event);
+  }
 
   // ------------------------------------------------------------ reading
 
@@ -291,6 +285,7 @@ class Store {
     await this.refreshLists();
     await Promise.all(Object.keys(this.details).map((id) => this.refreshList(Number(id))));
     if (this.recipes.length > 0) await this.refreshRecipes();
+    this.#emit({ type: 'resync' });
   }
 
   /** Connect to `/api/events`; EventSource reconnects by itself. */
@@ -326,6 +321,8 @@ class Store {
         case 'resync':
           void this.resync();
           break;
+        default:
+          this.#emit(event);
       }
     };
 
