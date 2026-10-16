@@ -143,7 +143,7 @@ foods:
     aisle: groente & fruit
     synonyms: [verse peterselie, parsley]
   verse koriander:
-    custom: fresh coriander   # not in NEVO 2025/9.0: own values, see custom.yaml
+    custom: verse koriander 
     aisle: groente & fruit
     synonyms: [cilantro, fresh coriander]
   basilicum:
@@ -151,7 +151,7 @@ foods:
     aisle: groente & fruit
     synonyms: [basil]
   thaise basilicum:
-    custom: thai basil
+    custom: thaise basilicum
     aisle: groente & fruit
     synonyms: [holy basil, thai basil]
   gember:
@@ -282,7 +282,7 @@ foods:
     aisle: pasta, rijst & wereldkeuken
     synonyms: [brown rice]
   paella rijst:
-    custom: bomba rice
+    custom: paella rijst 
     aisle: pasta, rijst & wereldkeuken
     synonyms: [bomba rijst, bomba rice]
   gedroogde linzen:
@@ -305,8 +305,7 @@ foods:
     aisle: conserven & sauzen
     synonyms: [oyster sauce]
   vissaus:
-    # Not in NEVO. Very salty, so it matters for salt: add the label with
-    # `grocery custom add vissaus` (or Foods in the app), then `custom: vissaus`.
+    custom: vissaus
     density: 1.2
     aisle: conserven & sauzen
     synonyms: [fish sauce]
@@ -357,14 +356,14 @@ foods:
     aisle: conserven & sauzen
     synonyms: [tomaat in blik, tomaten in blik, diced tomatoes]
   chipotle peper in adobosaus:
-    custom: chipotle peppers in adobo sauce
+    custom: chipotle peper in adobo sauce
     aisle: conserven & sauzen
     synonyms: [chipotle peppers in adobo sauce]
   nduja:
     custom: nduja
     aisle: conserven & sauzen
   kalamata olijven:
-    custom: kalamata olives
+    custom: kalamata olijven
     aisle: conserven & sauzen
     synonyms: [kalamata olives]
   artisjokharten:
@@ -393,7 +392,7 @@ foods:
     aisle: conserven & sauzen
     synonyms: [bouillonblok, stock cube]
   fond:
-    custom: broth
+    custom: fond 
     aisle: conserven & sauzen
     synonyms: [bouillon, gevogeltefond, runderfond, groentefond, paddenstoelenfond, vega bouillon, kippenbouillon, runderbouillon, broth]
   sherry:
@@ -455,7 +454,7 @@ foods:
     aisle: kruiden & specerijen
     synonyms: [dried thyme]
   tacokruiden:
-    custom: taco seasoning
+    custom: tacokruiden 
     aisle: kruiden & specerijen
     synonyms: [taco kruidenmix, taco seasoning]
 
@@ -483,7 +482,7 @@ foods:
     aisle: ontbijt & bakproducten
     synonyms: [peanut butter]
   kokossuiker:
-    custom: coconut sugar
+    custom: kokossuiker 
     density: 0.7
     aisle: ontbijt & bakproducten
     synonyms: [kokosbloesemsuiker, coconut sugar]
@@ -493,7 +492,7 @@ foods:
     aisle: ontbijt & bakproducten
     synonyms: [rauwe cacao, cocoa powder]
   eiwitpoeder:
-    custom: protein powder
+    custom: eiwitpoeder 
     aisle: ontbijt & bakproducten
     synonyms: [proteïnepoeder, protein powder]
   ahornsiroop:
