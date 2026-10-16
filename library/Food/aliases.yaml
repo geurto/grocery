@@ -143,7 +143,7 @@ foods:
     aisle: groente & fruit
     synonyms: [verse peterselie, parsley]
   verse koriander:
-    custom: verse koriander 
+    custom: verse koriander   # not in NEVO: Ciqual values, see custom.yaml
     aisle: groente & fruit
     synonyms: [cilantro, fresh coriander]
   basilicum:
@@ -151,16 +151,17 @@ foods:
     aisle: groente & fruit
     synonyms: [basil]
   thaise basilicum:
-    custom: thaise basilicum
+    nevo: 2177          # Basilicum vers (the AH label values were exactly this)
     aisle: groente & fruit
     synonyms: [holy basil, thai basil]
   gember:
     nevo: 832
     aisle: groente & fruit
     synonyms: [verse gember, gemberwortel, ginger]
-  # Used by the stalk or leaf, a few grams per serving: not worth counting.
+  # Used by the stalk or leaf, a few grams per serving. Not in NEVO, Ciqual or
+  # USDA Foundation Foods, so not counted.
   citroengras:
-    negligible: true    # NEVO only has dried lemongrass powder
+    negligible: true    # NEVO only has dried lemongrass powder (1236)
     aisle: groente & fruit
     synonyms: [sereh, lemongrass]
   limoenblad:
@@ -282,7 +283,7 @@ foods:
     aisle: pasta, rijst & wereldkeuken
     synonyms: [brown rice]
   paella rijst:
-    custom: paella rijst 
+    nevo: 5             # Rijst witte rauw (bomba is a white short-grain rice)
     aisle: pasta, rijst & wereldkeuken
     synonyms: [bomba rijst, bomba rice]
   gedroogde linzen:
@@ -356,7 +357,7 @@ foods:
     aisle: conserven & sauzen
     synonyms: [tomaat in blik, tomaten in blik, diced tomatoes]
   chipotle peper in adobosaus:
-    custom: chipotle peper in adobo sauce
+    custom: chipotle peper in adobosaus
     aisle: conserven & sauzen
     synonyms: [chipotle peppers in adobo sauce]
   nduja:
@@ -408,11 +409,13 @@ foods:
     aisle: kruiden & specerijen
     synonyms: [komijnzaad, cumin]
   gemalen koriander:
-    negligible: true
+    custom: gemalen koriander   # Ciqual
+    density: 0.36       # ~1.8 g per tl
     aisle: kruiden & specerijen
     synonyms: [korianderpoeder, koriander, coriander]
   kaneel:
-    negligible: true
+    nevo: 826           # Kaneel
+    density: 0.52       # ~2.6 g per tl
     aisle: kruiden & specerijen
     synonyms: [kaneelpoeder, cinnamon powder]
 
@@ -422,18 +425,42 @@ foods:
     aisle: kruiden & specerijen
     synonyms: [chili flakes]
   chilipoeder:
-    negligible: true
+    nevo: 1221          # Chilipoeder
+    density: 0.54       # ~2.7 g per tl
     aisle: kruiden & specerijen
-    synonyms: [cayennepeper, chili powder]
+    synonyms: [chili powder]
+  cayennepeper:
+    nevo: 1225          # Peper cayenne- rood
+    density: 0.36       # ~1.8 g per tl
+    aisle: kruiden & specerijen
+    synonyms: [cayenne, cayenne pepper]
   paprikapoeder:
     nevo: 1229
     density: 0.45       # ground spice, ~2 g per tl
     aisle: kruiden & specerijen
     synonyms: [pittige paprikapoeder, gerookte paprikapoeder, paprika powder]
   kurkuma:
-    negligible: true
+    custom: kurkuma     # Ciqual
+    density: 0.6        # ~3 g per tl
     aisle: kruiden & specerijen
     synonyms: [turmeric]
+  venkelzaad:
+    custom: venkelzaad  # Ciqual
+    density: 0.4        # ~2 g per tl
+    aisle: kruiden & specerijen
+    synonyms: [fennel seeds, fennel seed]
+  gedroogde tijm:
+    custom: gedroogde tijm   # Ciqual
+    density: 0.2        # ~1 g per tl (dried leaves)
+    aisle: kruiden & specerijen
+    synonyms: [dried thyme]
+  tacokruiden:
+    custom: tacokruiden 
+    aisle: kruiden & specerijen
+    synonyms: [taco kruidenmix, taco seasoning]
+  # Below: not counted. Garam masala has no entry in NEVO, Ciqual or USDA
+  # Foundation Foods; saffron and bay leaf stay under 0.5% of any reference
+  # intake per serving at recipe amounts (and bay leaves are not eaten).
   garam masala:
     negligible: true
     aisle: kruiden & specerijen
@@ -441,22 +468,10 @@ foods:
     negligible: true
     aisle: kruiden & specerijen
     synonyms: [saffron]
-  venkelzaad:
-    negligible: true
-    aisle: kruiden & specerijen
-    synonyms: [fennel seeds, fennel seed]
   laurierblad:
     negligible: true
     aisle: kruiden & specerijen
     synonyms: [laurierbladen, bay leaf]
-  gedroogde tijm:
-    negligible: true
-    aisle: kruiden & specerijen
-    synonyms: [dried thyme]
-  tacokruiden:
-    custom: tacokruiden 
-    aisle: kruiden & specerijen
-    synonyms: [taco kruidenmix, taco seasoning]
 
   ### ontbijt & bakproducten ###
   granola:

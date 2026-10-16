@@ -1,28 +1,30 @@
 # Your own nutrition values, per 100 g (or 100 ml), for foods NEVO lacks.
 # Use a food with `custom: <name>` in aliases.yaml. Leave out what the
-# package doesn't list: missing means unknown, not 0.
+# source doesn't list: missing means unknown, not 0.
+#
+# `nutrients:` uses NEVO's nutrient codes and units, so these values land in
+# the same report rows (µg: VITA_RAE, FOL, VITB12, VITD, VITK, SE, ID; the rest mg).
+# Vitamins/minerals come from Ciqual 2025 (ANSES, France), copied unrounded.
+# Conversions from Ciqual's columns:
+#   VITA_RAE  Ciqual "vitamin A activity" (= retinol + beta-carotene/12, i.e. RAE);
+#             where that is blank but beta-carotene is given: beta-carotene/12
+#   FOL       dietary folate equivalents; for natural foods = total folate
+#   NIAEQ     preformed niacin only: Ciqual has no tryptophan, so slightly low
+#   VITE      alpha-tocopherol where given, else Ciqual "vitamin E"
+#   VITK      vitamin K1 (+ K2 where given)
+#   "< x"     (below detection limit) left out = unknown; "traces" = 0, as NEVO does
 foods:
   verse koriander:
-    source: Voedingscentrum 
-    energy_kcal: 37
-    protein: 4
-    fat: 0.8
-    saturated_fat: 0.1
-    carbohydrate: 1
-    sugars: 0
-    fibre: 5
+    source: Ciqual 2025 (ANSES) 11094 'Coriander, fresh'
+    energy_kcal: 22.3
+    protein: 2.13
+    fat: 0.52
+    saturated_fat: 0.014
+    carbohydrate: 0.87
+    sugars: 0.87
+    fibre: 2.8
     sodium_mg: 46
-    nutrients: { VITC: 27 }
-  thaise basilicum:
-    source: Albert Heijn
-    energy_kcal: 48.0
-    protein: 3.1
-    fat: 0.8
-    saturated_fat: 0.2
-    carbohydrate: 5.1
-    sugars: 5.1
-    fibre: 3.9
-    salt: 0.03
+    nutrients: { VITA_RAE: 328, THIA: 0.067, RIBF: 0.16, NIAEQ: 1.11, VITB6: 0.15, FOL: 62, VITB12: 0, VITC: 27, VITD: 0, VITE: 2.5, VITK: 310, K: 521, CA: 67, P: 48, MG: 26, FE: 1.77, ZN: 0.5, CU: 0.23 }
   tacokruiden:
     source: Jumbo
     energy_kcal: 297.0
@@ -33,26 +35,49 @@ foods:
     sugars: 20.0
     fibre: 12.0
     salt: 15.8
-  paella rijst:
-    source: Sligro
-    energy_kcal: 344.0
-    protein: 7.0
-    fat: 0.68
-    saturated_fat: 0.14
-    carbohydrate: 76.9
-    sugars: 0.22
-    fibre: 3.1
-    salt: 0.01
-  koriander:
-    source: Voedingscentrum
-    energy_kcal: 372.0
-    protein: 12.0
-    fat: 18.0
-    saturated_fat: 1.0
-    carbohydrate: 26.0
-    sugars: 5.0
-    fibre: 42.0
-    salt: 0.0
+  gemalen koriander:
+    source: Ciqual 2025 (ANSES) 11026 'Coriander, seed'
+    energy_kcal: 345
+    protein: 12.4
+    fat: 17.8
+    saturated_fat: 0.99
+    carbohydrate: 13
+    fibre: 41.9
+    sodium_mg: 35
+    nutrients: { THIA: 0.24, RIBF: 0.29, NIAEQ: 2.13, FOL: 0, VITB12: 0, VITC: 21, VITD: 0, K: 1270, CA: 709, P: 409, MG: 330, FE: 16.3, ZN: 4.7, CU: 0.98 }
+  kurkuma:
+    source: Ciqual 2025 (ANSES) 11089 'Turmeric, powder'
+    energy_kcal: 291
+    protein: 9.68
+    fat: 3.25
+    saturated_fat: 1.84
+    carbohydrate: 44.4
+    sugars: 3.21
+    fibre: 22.7
+    sodium_mg: 27
+    nutrients: { THIA: 0.058, RIBF: 0.15, NIAEQ: 1.35, VITB6: 0.11, FOL: 20, VITB12: 0, VITC: 0.7, VITD: 0, VITE: 4.43, VITK: 13.4, K: 2080, CA: 168, P: 299, MG: 208, FE: 55, ZN: 4.5, CU: 1.3 }
+  gedroogde tijm:
+    source: Ciqual 2025 (ANSES) 11038 'Thyme, dried'
+    energy_kcal: 285
+    protein: 9.11
+    fat: 7.43
+    saturated_fat: 2.73
+    carbohydrate: 26.9
+    sugars: 1.71
+    fibre: 37
+    sodium_mg: 55
+    nutrients: { VITA_RAE: 189, THIA: 0.51, RIBF: 0.4, NIAEQ: 4.94, VITB6: 0.55, FOL: 274, VITB12: 0, VITC: 50, VITD: 0, VITE: 7.48, VITK: 1710, K: 814, CA: 1890, P: 201, MG: 220, FE: 124, ZN: 6.18, CU: 0.86 }
+  venkelzaad:
+    source: Ciqual 2025 (ANSES) 11066 'Fennel, seed'
+    energy_kcal: 327
+    protein: 15.8
+    fat: 14.9
+    saturated_fat: 0.48
+    carbohydrate: 12.5
+    sugars: 12.5
+    fibre: 39.8
+    sodium_mg: 88
+    nutrients: { VITA_RAE: 6.75, THIA: 0.41, RIBF: 0.35, NIAEQ: 6.05, VITB6: 0.47, FOL: 0, VITB12: 0, VITC: 21, VITD: 0, VITE: 2.72, VITK: 0, K: 1690, CA: 1200, P: 487, MG: 385, FE: 18.5, ZN: 3.7, CU: 1.07 }
   kokossuiker:
     source: package
     energy_kcal: 390.0
@@ -64,27 +89,28 @@ foods:
     fibre: 0.0
     salt: 0.01
   kalamata olijven:
-    source: Albert Heijn
-    energy_kcal: 232.0
+    source: "Albert Heijn; vitamins/minerals: Ciqual 2025 (ANSES) 13131 'Olive, black, in oil (Greek olive)'"
+    energy_kcal: 232
     protein: 1.5
-    fat: 24.0
+    fat: 24
     saturated_fat: 2.7
     carbohydrate: 3.1
     sugars: 0.4
     fibre: 2.6
     salt: 3.4
+    nutrients: { VITA_RAE: 1.02, THIA: 0.058, RIBF: 0.05, NIAEQ: 0.19, VITB6: 0.048, FOL: 5.83, VITB12: 0, VITC: 0.62, VITD: 0, VITE: 2.57, K: 320, CA: 110, P: 60, MG: 29, FE: 1.7, ZN: 0.62, CU: 0.27 }
   fond:
     per: 100ml
-    source: Albert Heijn
-    energy_kcal: 6.0
+    source: Jumbo
+    energy_kcal: 10.0
     protein: 1.6
-    fat: 0.2
-    saturated_fat: 0.07
-    carbohydrate: 0.5
-    sugars: 2.0
+    fat: 0.3
+    saturated_fat: 0.1
+    carbohydrate: 0.3
+    sugars: 0.1
     fibre: 0.0
     salt: 1.0
-  chipotle pepers in adobo sauce:
+  chipotle peper in adobosaus:
     source: La Morena
     energy_kcal: 100.0
     protein: 0.5
@@ -104,6 +130,16 @@ foods:
     sugars: 1.8
     fibre: 0.0
     salt: 1.9
+  vissaus:
+    source: Ciqual 2025 (ANSES) 11194 'Nuoc mam sauce or fish sauce, prepacked'
+    energy_kcal: 81.2
+    protein: 9.3
+    fat: 0
+    saturated_fat: 0
+    carbohydrate: 10.9
+    sugars: 8.34
+    fibre: 0.2
+    sodium_mg: 8860
   eiwitpoeder:
     source: package
     energy_kcal: 402.0
@@ -126,12 +162,13 @@ foods:
     salt: 0.01
   harissa:
     per: 100g
-    source: package
-    energy_kcal: 117.0
+    source: "package; vitamins/minerals: Ciqual 2025 (ANSES) 11112 'Harissa (hot spicy sauce), prepacked'"
+    energy_kcal: 117
     protein: 1.8
     fat: 7.2
-    saturated_fat: 1.0
+    saturated_fat: 1
     carbohydrate: 9.4
     sugars: 7.5
     fibre: 2.1
     salt: 2.5
+    nutrients: { VITA_RAE: 333.3, RIBF: 0.21, VITB6: 0.26, FOL: 28, VITC: 31.9, VITE: 6.1, K: 710, CA: 78.1, P: 63, MG: 47.2, FE: 3.1, ID: 43.5 }
