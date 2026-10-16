@@ -177,8 +177,13 @@ async fn broken_recipes_are_listed_with_their_error() {
 async fn shopping_list_lifecycle() {
     let f = Fixture::new();
 
+    // Bad servings are refused; an empty list is fine (see lists_start_empty_and_grow).
     let (status, _) = f
-        .json(Method::POST, "/api/lists", Some(json!({ "recipes": [] })))
+        .json(
+            Method::POST,
+            "/api/lists",
+            Some(json!({ "recipes": [{ "path": "Pasta arrabbiata.cook", "servings": 0 }] })),
+        )
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 
@@ -890,4 +895,104 @@ async fn foods_can_be_added() {
             std::fs::read_to_string(f.app.library.custom_path()).unwrap()
         )
     );
+}
+
+#[tokio::test]
+async fn lists_start_empty_and_grow() {
+    let f = Fixture::new();
+    let (status, list) = f
+        .json(
+            Method::POST,
+            "/api/lists",
+            Some(json!({ "title": "Weekend" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{list}");
+    assert_eq!(list["items"], json!([]));
+    let id = list["id"].as_i64().unwrap();
+
+    // A typed name that's a known food becomes that food, in its aisle.
+    let (status, _) = f
+        .json(
+            Method::POST,
+            &format!("/api/lists/{id}/items"),
+            Some(json!({ "name": "melk" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, list) = f.json(Method::GET, &format!("/api/lists/{id}"), None).await;
+    assert_eq!(list["items"][0]["name"], "milk");
+    assert_eq!(list["items"][0]["aisle"], "zuivel & eieren");
+
+    // Recipes merge in.
+    let (status, list) = f
+        .json(
+            Method::POST,
+            &format!("/api/lists/{id}/recipes"),
+            Some(json!({ "recipes": [{ "path": "Pasta arrabbiata.cook", "servings": 2 }] })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    assert_eq!(list["recipes"][0]["title"], "Pasta arrabbiata");
+    let names: Vec<_> = list["items"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|i| i["name"].clone())
+        .collect();
+    assert!(
+        names.contains(&json!("spaghetti")) && names.contains(&json!("milk")),
+        "{names:?}"
+    );
+
+    let (status, _) = f
+        .json(
+            Method::POST,
+            &format!("/api/lists/{id}/recipes"),
+            Some(json!({ "recipes": [] })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/lists/999/recipes",
+            Some(json!({ "recipes": [{ "path": "Pasta arrabbiata.cook" }] })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn nutrition_of_one_food() {
+    let f = with_nevo();
+    // By a synonym; values per 100 g, with the citation.
+    let (status, n) = f.json(Method::GET, "/api/foods/ui/nutrition", None).await;
+    assert_eq!(status, StatusCode::OK, "{n}");
+    assert_eq!(n["food"], "onion");
+    assert_eq!(n["source"], "nevo");
+    assert_eq!(n["per"], "100g");
+    assert_eq!(n["piece_g"], 100.0);
+    assert!(n["citation"].as_str().unwrap().contains("NEVO"));
+    let row = |code: &str| {
+        n["nutrients"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["code"] == code)
+            .unwrap()
+            .clone()
+    };
+    assert_eq!(row("ENERCC")["value"], 25.0);
+    // Unknown is null, not 0.
+    assert!(n["nutrients"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|r| r["value"].is_null()));
+
+    let (status, _) = f
+        .json(Method::GET, "/api/foods/nothing/nutrition", None)
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

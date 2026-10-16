@@ -100,12 +100,15 @@ GET    /api/recipes?q=boerenkool              search title, tags, ingredients
 GET    /api/recipes/{path}?format=&servings=  one recipe (JSON), or md/txt export
 GET    /api/nutrition/{path}?all=&optional=   per-serving report (text)
 GET    /api/lists                             newest first
-POST   /api/lists                             {"title"?, "recipes": [{"path", "servings"?}]}
+POST   /api/lists                             {"title"?, "recipes"?: [{"path", "servings"?}]}
+                                              (no recipes: an empty list to fill as you go)
 GET    /api/lists/{id}?format=                JSON, md (all items, ticked as [x]),
                                               or txt (only what's left to buy)
 PATCH  /api/lists/{id}                        {"title"?, "status"?: "open" | "done"}
 DELETE /api/lists/{id}
-POST   /api/lists/{id}/items                  {"name": "toilet paper"}
+POST   /api/lists/{id}/items                  {"name": "toilet paper"}; a known food gets
+                                              its own name and aisle ("melk" → milk)
+POST   /api/lists/{id}/recipes                {"recipes": [{"path", "servings"?}]}: merged in
 PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 DELETE /api/lists/{id}/items/{item}
 GET    /api/people
@@ -128,6 +131,7 @@ GET    /api/recipe-files/{path}               {"source", "version"}: a recipe as
 POST   /api/recipe-files                      {"folder"?, "source"} → 201 {"path"}; 409 if it exists
 PUT    /api/recipe-files/{path}               {"source", "version"}; 409 if the file changed meanwhile
 GET    /api/foods                             what aliases.yaml knows
+GET    /api/foods/{name}/nutrition            per 100 g (or ml), with its source and citation
 POST   /api/foods                             {"name", "aisle"?, "synonyms"?, "nevo"? | "custom"? |
                                                "own"? | "negligible"?, "piece_g"?, "density"?, "units"?}
 GET    /api/aisles
@@ -203,12 +207,23 @@ A release build without `web/dist` still compiles and runs, but shows a
 Three tabs: **Lists**, **Recipes** and **Plan**.
 
 - **Lists overview**: open lists with progress; done lists folded away.
+- **New list** makes an empty list; fill it as you go.
 - **Shopping**: items grouped by aisle in walking order. Tap to tick;
-  ticked items sink to the bottom of their aisle (or hide them). Add items
-  by hand. Share what's left (share sheet, or clipboard), copy as Markdown,
-  keep the screen on, mark done, rename, delete.
-- **New list**: search recipes by title, tag or ingredient, set servings,
-  and make the list.
+  ticked items sink to the bottom of their aisle (or hide them). Share
+  what's left (share sheet, or clipboard), copy as Markdown, keep the screen
+  on, mark done, rename, delete.
+- **Adding items**: type and pick from your foods as you type (name or any
+  synonym: "ui" offers onion); a known food lands in its aisle under its own
+  name, also offline. ⓘ next to a suggestion shows its nutrition per 100 g.
+  Anything else ("toilet paper") goes under Other.
+- **+ Recipes** on a list (or **Add to a list…** on a recipe): their
+  ingredients are merged into what's there. The same food adds up when the
+  units allow it (2 onions + 220 g of onion becomes 440 g when the onion has
+  a piece weight); otherwise it gets its own line. A ticked line that now
+  needs more is unticked, so it isn't missed. Adding a recipe that's already
+  on the list counts it twice as many servings.
+- **Removing items**: **Edit** puts a remove button on every item (items
+  added by hand always have one), with a few seconds to undo.
 - **Recipes**: by folder (`Diner/`, `Ontbijt/`), searchable.
 - **New recipe / Edit**: fields for title, folder, servings, time and tags,
   and the method in Cooklang. Buttons insert `@ingredient{amount%unit}`,
@@ -220,6 +235,8 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
   saving is refused if the file changed on disk meanwhile. It writes a plain
   `.cook` file in `Recipes/`, so the usual `git commit` applies. A recipe's
   other front matter (author, source, …) is kept as it was.
+- **Foods**: tap a food for its nutrition per 100 g (NEVO or your own
+  values, with what's unknown shown as unknown).
 - **Add food** (from the editor, or the *Foods* screen): name and other
   names, aisle, and where nutrition comes from: **NEVO** (search by Dutch or
   English name, with kcal to tell raw from cooked), **your own values** (the

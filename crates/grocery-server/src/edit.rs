@@ -481,6 +481,120 @@ pub async fn add_food(
     .await
 }
 
+#[derive(Serialize)]
+pub struct FoodNutrition {
+    /// The food's name in aliases.yaml.
+    food: String,
+    /// `nevo`, `custom` (own values), `negligible` or `none`.
+    source: &'static str,
+    /// The NEVO food the values come from.
+    nevo: Option<NevoRef>,
+    /// For own values: where the numbers came from.
+    own_source: Option<String>,
+    /// `100g` or `100ml`; `None` when there are no values.
+    per: Option<&'static str>,
+    piece_g: Option<f64>,
+    /// The label-style rows; `value` is `null` when unknown (not zero).
+    nutrients: Vec<NutrientValue>,
+    /// Required with NEVO numbers by its conditions of use.
+    citation: Option<String>,
+}
+
+#[derive(Serialize)]
+struct NevoRef {
+    code: u32,
+    name: String,
+}
+
+#[derive(Serialize)]
+struct NutrientValue {
+    code: String,
+    label: String,
+    unit: String,
+    value: Option<f64>,
+    indent: bool,
+    section: Option<String>,
+}
+
+/// Nutrition of one food per 100 g (or ml): what a line on a shopping list
+/// or a name in the food list stands for.
+pub async fn food_nutrition(
+    State(app): State<Shared>,
+    Path(name): Path<String>,
+) -> ApiResult<Json<FoodNutrition>> {
+    use grocery_core::nutrition::{Basis, Composition, FoodKey};
+    blocking(&app, move |app| {
+        let db = app.library.food_db()?;
+        let resolved = db
+            .resolve(&name)
+            .ok_or_else(|| ApiError::not_found(format!("food '{name}'")))?;
+        let info = resolved.info;
+        let mut out = FoodNutrition {
+            food: resolved.canonical.to_owned(),
+            source: "none",
+            nevo: None,
+            own_source: None,
+            per: None,
+            piece_g: info.piece_g,
+            nutrients: vec![],
+            citation: None,
+        };
+        let store = app.store();
+        let composition: Option<Composition> = if info.negligible {
+            out.source = "negligible";
+            None
+        } else if let Some(code) = info.nevo {
+            out.source = "nevo";
+            let nevo = store.require_nevo()?;
+            out.citation = Some(nevo.citation());
+            let table = store.compositions(&std::collections::BTreeSet::from([code]))?;
+            let comp = table.nevo(code).cloned();
+            out.nevo = comp.as_ref().map(|c| NevoRef {
+                code,
+                name: c.name.clone(),
+            });
+            comp
+        } else if let Some(custom) = &info.custom {
+            out.source = "custom";
+            let key = FoodKey::Custom(grocery_core::food::normalize_name(custom));
+            let comp = app
+                .library
+                .custom_foods()?
+                .compositions()
+                .into_iter()
+                .find(|c| c.key == key);
+            out.own_source = comp.as_ref().and_then(|c| c.source.clone());
+            comp
+        } else {
+            None
+        };
+        if let Some(c) = composition {
+            out.per = Some(match c.basis {
+                Basis::Per100g => "100g",
+                Basis::Per100ml => "100ml",
+            });
+            let mut values = c.values.clone();
+            if let Some(na) = values.get("NA").copied() {
+                values.insert("SALT".into(), na * 2.5 / 1000.0);
+            }
+            out.nutrients = store
+                .display_rows(false)?
+                .into_iter()
+                .map(|r| NutrientValue {
+                    value: values.get(&r.code).copied(),
+                    code: r.code,
+                    label: r.label,
+                    unit: r.unit,
+                    indent: r.indent,
+                    section: r.section,
+                })
+                .collect();
+        }
+        Ok(Json(out))
+    })
+    .await
+}
+
 // ---------------------------------------------------------------- NEVO
 
 #[derive(Deserialize)]

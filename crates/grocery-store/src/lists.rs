@@ -4,7 +4,8 @@
 //! Editing a recipe afterwards doesn't change a list someone is shopping
 //! with. Items can be ticked off, and extra items added by hand.
 
-use grocery_core::aggregate::{Item, Qty, ShoppingList, Source};
+use grocery_core::aggregate::{self, Item, Qty, ShoppingList, Source};
+use grocery_core::food::FoodDb;
 use grocery_core::units::Dim;
 use rusqlite::{params, OptionalExtension};
 
@@ -250,9 +251,11 @@ impl Store {
         Ok(self.conn.execute("DELETE FROM lists WHERE id = ?1", [id])? > 0)
     }
 
-    /// Add an item by hand ("toilet paper"). It goes at the end, without an
-    /// aisle. Returns the new item's id, or `None` if there's no such list.
-    pub fn add_item(&mut self, list: i64, name: &str) -> Result<Option<i64>> {
+    /// Add an item by hand ("toilet paper", "melk"). A name `db` knows
+    /// becomes that food, with its aisle; the list is re-sorted so it lands
+    /// in the right aisle. Returns the new item's id, or `None` if there's
+    /// no such list.
+    pub fn add_item(&mut self, list: i64, name: &str, db: &FoodDb) -> Result<Option<i64>> {
         let name = name.trim();
         if name.is_empty() || name.contains('\n') {
             return Err(Error::Invalid(
@@ -260,32 +263,71 @@ impl Store {
             ));
         }
         let tx = self.conn.transaction()?;
-        let exists: bool = tx.query_row(
-            "SELECT EXISTS (SELECT 1 FROM lists WHERE id = ?1)",
-            [list],
-            |r| r.get(0),
-        )?;
-        if !exists {
+        if !list_exists(&tx, list)? {
             return Ok(None);
         }
-        let pos: i64 = tx.query_row(
-            "SELECT COALESCE(MAX(pos), -1) + 1 FROM list_items WHERE list = ?1",
+        let id = insert_item(&tx, list, i64::MAX, &aggregate::hand_item(name, db))?;
+        resort(&tx, list, db.aisle_order())?;
+        tx.commit()?;
+        Ok(Some(id))
+    }
+
+    /// Add recipes to an existing list: their items are merged into the
+    /// lines already there (see [`aggregate::merge_into`]), the recipes are
+    /// added to the list's sources, and the list is re-sorted. Returns
+    /// `false` if there's no such list.
+    pub fn add_recipes(&mut self, list: i64, built: &ShoppingList, db: &FoodDb) -> Result<bool> {
+        let Some(current) = self.list(list)? else {
+            return Ok(false);
+        };
+        let ids: Vec<i64> = current.items.iter().map(|i| i.id).collect();
+        let mut items: Vec<Item> = current.items.into_iter().map(|i| i.item).collect();
+        let changed = aggregate::merge_into(&mut items, built.items.clone(), db);
+
+        let tx = self.conn.transaction()?;
+        for &i in &changed {
+            update_item(&tx, ids[i], &items[i])?;
+        }
+        for item in &items[ids.len()..] {
+            insert_item(&tx, list, i64::MAX, item)?;
+        }
+        // A recipe that's on the list already is cooked more: add up.
+        let mut next: i64 = tx.query_row(
+            "SELECT COALESCE(MAX(pos), -1) + 1 FROM list_recipes WHERE list = ?1",
             [list],
             |r| r.get(0),
         )?;
-        let item = Item {
-            name: name.to_owned(),
-            aisle: None,
-            quantity: None,
-            notes: vec![],
-            optional: false,
-            recipes: vec![],
-            known: false,
-            checked: false,
-        };
-        let id = insert_item(&tx, list, pos, &item)?;
+        for s in &built.sources {
+            let path = s.path.to_string_lossy();
+            let merged = tx.execute(
+                "UPDATE list_recipes
+                 SET factor = factor + ?3,
+                     servings = CASE WHEN servings IS NULL OR ?4 IS NULL THEN NULL ELSE servings + ?4 END
+                 WHERE list = ?1 AND path = ?2",
+                params![list, path, s.factor, s.servings],
+            )?;
+            if merged == 0 {
+                tx.execute(
+                    "INSERT INTO list_recipes (list, pos, path, title, servings, factor)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![list, next, path, s.title, s.servings, s.factor],
+                )?;
+                next += 1;
+            }
+        }
+        let mut pantry = current.pantry_skipped;
+        for p in &built.pantry_skipped {
+            if !pantry.contains(p) {
+                pantry.push(p.clone());
+            }
+        }
+        tx.execute(
+            "UPDATE lists SET pantry = ?2 WHERE id = ?1",
+            params![list, join_lines(&pantry)],
+        )?;
+        resort(&tx, list, db.aisle_order())?;
         tx.commit()?;
-        Ok(Some(id))
+        Ok(true)
     }
 
     /// Tick an item on or off. Returns `false` if the item isn't on that list.
@@ -304,6 +346,65 @@ impl Store {
         )?;
         Ok(changed > 0)
     }
+}
+
+fn list_exists(conn: &rusqlite::Connection, list: i64) -> Result<bool> {
+    Ok(conn.query_row(
+        "SELECT EXISTS (SELECT 1 FROM lists WHERE id = ?1)",
+        [list],
+        |r| r.get(0),
+    )?)
+}
+
+/// Put a list's items back in walking order (see [`aggregate::sort_key`]).
+fn resort(conn: &rusqlite::Connection, list: i64, aisle_order: &[String]) -> Result<()> {
+    let mut rows: Vec<(i64, Item)> = conn
+        .prepare("SELECT id, name, aisle FROM list_items WHERE list = ?1 ORDER BY pos, id")?
+        .query_map([list], |r| {
+            Ok((
+                r.get(0)?,
+                Item {
+                    name: r.get(1)?,
+                    aisle: r.get(2)?,
+                    quantity: None,
+                    notes: vec![],
+                    optional: false,
+                    recipes: vec![],
+                    known: false,
+                    checked: false,
+                },
+            ))
+        })?
+        .collect::<Result<_, _>>()?;
+    // Stable: lines of the same food keep their order.
+    rows.sort_by_cached_key(|(_, item)| aggregate::sort_key(item, aisle_order));
+    let mut set = conn.prepare("UPDATE list_items SET pos = ?2 WHERE id = ?1")?;
+    for (pos, (id, _)) in rows.iter().enumerate() {
+        set.execute(params![id, pos as i64])?;
+    }
+    Ok(())
+}
+
+fn update_item(conn: &rusqlite::Connection, id: i64, item: &Item) -> Result<()> {
+    let q = item.quantity.as_ref();
+    conn.execute(
+        "UPDATE list_items SET aisle = ?2, dim = ?3, value = ?4, label = ?5, notes = ?6,
+                optional = ?7, recipes = ?8, known = ?9, checked = ?10
+         WHERE id = ?1",
+        params![
+            id,
+            item.aisle,
+            q.map(|q| dim_to_sql(&q.dim)),
+            q.map(|q| q.value),
+            q.and_then(|q| q.label.clone()),
+            join_lines(&item.notes),
+            item.optional,
+            join_lines(&item.recipes),
+            item.known,
+            item.checked
+        ],
+    )?;
+    Ok(())
 }
 
 fn insert_item(conn: &rusqlite::Connection, list: i64, pos: i64, item: &Item) -> Result<i64> {

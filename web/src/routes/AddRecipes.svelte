@@ -3,19 +3,30 @@
   import Header from '../components/Header.svelte';
   import Stepper from '../components/Stepper.svelte';
   import { OfflineError } from '../lib/api';
-  import { draft, resetDraft } from '../lib/draft.svelte';
+  import { draft, draftFor, resetDraft } from '../lib/draft.svelte';
   import { searchRecipes } from '../lib/recipes';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
   import type { RecipeSummary } from '../lib/types';
+
+  /** The list the recipes go on. */
+  let { id }: { id: number } = $props();
 
   let query = $state('');
   let creating = $state(false);
   let error = $state<string | null>(null);
 
   $effect(() => {
-    untrack(() => void store.refreshRecipes());
+    const listId = id;
+    untrack(() => {
+      draftFor(listId);
+      void store.refreshRecipes();
+    });
   });
+
+  const list = $derived(store.list(id));
+  /** Already on the list: shown, so you don't add a recipe twice by accident. */
+  const onList = $derived(new Set(list?.recipes.map((r) => r.path) ?? []));
 
   const picked = $derived(new Set(draft.picks.map((p) => p.path)));
   const results = $derived(searchRecipes(store.recipes, query));
@@ -32,16 +43,16 @@
     creating = true;
     error = null;
     try {
-      const list = await store.createList(
+      await store.addRecipes(
+        id,
         draft.picks.map((p) => ({ path: p.path, servings: p.servings ?? undefined })),
-        draft.title.trim() || undefined,
       );
       resetDraft();
-      router.go({ name: 'list', id: list.id }, true);
+      router.back();
     } catch (e) {
       error =
         e instanceof OfflineError
-          ? 'Making a list needs a connection to the server.'
+          ? 'Adding recipes needs a connection to the server.'
           : e instanceof Error
             ? e.message
             : String(e);
@@ -51,12 +62,12 @@
   }
 </script>
 
-<Header title="New list" back />
+<Header title={list ? `Add to ${list.title}` : 'Add recipes'} back />
 
 <main>
   {#if draft.picks.length > 0}
     <section class="picked">
-      <h2>On this list</h2>
+      <h2>Adding</h2>
       <ul class="card">
         {#each draft.picks as pick (pick.path)}
           <li>
@@ -76,10 +87,11 @@
           </li>
         {/each}
       </ul>
-      <input class="field" bind:value={draft.title} placeholder="Title (optional)" aria-label="List title" />
       {#if error}<p class="error small" role="alert">{error}</p>{/if}
       <button class="btn primary create" onclick={create} disabled={creating}>
-        {creating ? 'Making the list…' : `Make shopping list (${draft.picks.length})`}
+        {creating
+          ? 'Adding…'
+          : `Add ${draft.picks.length} ${draft.picks.length === 1 ? 'recipe' : 'recipes'} to the list`}
       </button>
     </section>
   {/if}
@@ -109,7 +121,9 @@
                   <span class="small error">Doesn’t parse; fix the .cook file</span>
                 {:else}
                   <span class="small muted">
-                    {r.servings ? `serves ${r.servings}` : 'no servings'}{r.tags.length ? ` · ${r.tags.join(', ')}` : ''}
+                    {#if onList.has(r.path)}<span class="already">already on the list · </span>{/if}{r.servings
+                      ? `serves ${r.servings}`
+                      : 'no servings'}{r.tags.length ? ` · ${r.tags.join(', ')}` : ''}
                   </span>
                 {/if}
               </span>
@@ -125,6 +139,10 @@
 </main>
 
 <style>
+  .already {
+    color: var(--accent);
+    font-weight: 600;
+  }
   section {
     margin-bottom: 1.5rem;
   }

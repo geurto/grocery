@@ -5,7 +5,8 @@
 import { api, HttpError, OfflineError } from './api';
 import { load, save } from './storage';
 import { applyOps, next, settle, type Op, type Outcome } from './sync';
-import type { List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
+import { resolveFood } from './foods';
+import type { Food, List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
 
 const RECIPE_CACHE_SIZE = 40;
 const RETRY_MS = 15_000;
@@ -17,6 +18,10 @@ class Store {
   /** Server state per list (with sent changes folded in). */
   details = $state<Record<number, List>>(load('details', {}));
   recipes = $state<RecipeSummary[]>(load('recipes', []));
+  /** The food list (aliases.yaml), for suggestions and aisles offline. */
+  foods = $state<Food[]>(load('foods', []));
+  /** Aisles in walking order. */
+  aisles = $state<string[]>(load('aisles', []));
   outbox = $state<Op[]>(load('outbox', []));
   /** Whether the last request reached the server. */
   online = $state(true);
@@ -150,6 +155,21 @@ class Store {
     save('recipes', recipes);
   }
 
+  async refreshFoods() {
+    const [foods, aisles] = await Promise.all([this.#try(api.foods), this.#try(api.aisles)]).catch(() => [
+      undefined,
+      undefined,
+    ]);
+    if (foods) {
+      this.foods = foods;
+      save('foods', foods);
+    }
+    if (aisles) {
+      this.aisles = aisles;
+      save('aisles', aisles);
+    }
+  }
+
   /** A recipe from the server, or from the cache when offline. */
   async recipe(path: string, servings?: number): Promise<Recipe | undefined> {
     const key = recipeKey(path, servings);
@@ -186,7 +206,17 @@ class Store {
     if (!trimmed) return;
     // Negative and unique on this phone until the server assigns a real id.
     const temp = -(Date.now() * 100 + (this.#seq % 100));
-    this.#enqueue({ seq: ++this.#seq, kind: 'add', list, temp, name: trimmed });
+    // Show it as the server will: the food's own name, in its aisle.
+    const food = resolveFood(this.foods, trimmed);
+    this.#enqueue({
+      seq: ++this.#seq,
+      kind: 'add',
+      list,
+      temp,
+      name: trimmed,
+      shown: food?.name,
+      aisle: food?.aisle ?? null,
+    });
   }
 
   removeItem(list: number, item: number) {
@@ -252,7 +282,20 @@ class Store {
 
   // These need the server, so they don't work offline.
 
-  async createList(recipes: { path: string; servings?: number }[], title?: string) {
+  /** Merge recipes into a list that exists. Needs the server. */
+  async addRecipes(id: number, recipes: { path: string; servings?: number }[]) {
+    // Send pending ticks first, so the merge sees them.
+    await this.flush();
+    const list = await api.addRecipes(id, recipes);
+    this.online = true;
+    this.#versions.set(id, (this.#versions.get(id) ?? 0) + 1);
+    this.details[id] = list;
+    save('details', this.details);
+    await this.refreshLists();
+    return list;
+  }
+
+  async createList(recipes: { path: string; servings?: number }[] = [], title?: string) {
     const list = await api.createList(recipes, title);
     this.online = true;
     this.details[list.id] = list;

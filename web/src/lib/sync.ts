@@ -12,7 +12,17 @@ import type { Item, List } from './types';
 
 export type Op =
   | { seq: number; kind: 'check'; list: number; item: number; checked: boolean }
-  | { seq: number; kind: 'add'; list: number; temp: number; name: string }
+  | {
+      seq: number;
+      kind: 'add';
+      list: number;
+      temp: number;
+      /** As typed; the server resolves it to a food. */
+      name: string;
+      /** How it shows until the server answers: the food's name and aisle if known here. */
+      shown?: string;
+      aisle?: string | null;
+    }
   | { seq: number; kind: 'remove'; list: number; item: number };
 
 /** What the server said about one op. */
@@ -21,11 +31,11 @@ export type Outcome =
   | { ok: false; retry: true } // offline or server trouble: keep it, try later
   | { ok: false; retry: false }; // refused or gone (list deleted): drop it
 
-export function newItem(id: number, name: string): Item {
+export function newItem(id: number, name: string, aisle: string | null = null): Item {
   return {
     id,
     name,
-    aisle: null,
+    aisle,
     quantity: null,
     notes: [],
     optional: false,
@@ -45,7 +55,7 @@ export function applyOps(list: List, ops: readonly Op[]): List {
         items = items.map((i) => (i.id === op.item ? { ...i, checked: op.checked } : i));
         break;
       case 'add':
-        if (!items.some((i) => i.id === op.temp)) items.push(newItem(op.temp, op.name));
+        if (!items.some((i) => i.id === op.temp)) items.push(newItem(op.temp, op.shown ?? op.name, op.aisle ?? null));
         break;
       case 'remove':
         items = items.filter((i) => i.id !== op.item);
