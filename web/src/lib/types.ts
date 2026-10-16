@@ -192,6 +192,19 @@ export interface Food {
   density: number | null;
 }
 
+/** Nutrition of one food per 100 g or ml (`/api/foods/{name}/nutrition`). */
+export interface FoodNutrition {
+  food: string;
+  source: 'nevo' | 'custom' | 'negligible' | 'none';
+  nevo: { code: number; name: string } | null;
+  own_source: string | null;
+  per: '100g' | '100ml' | null;
+  piece_g: number | null;
+  /** `value` null = unknown, not zero. */
+  nutrients: { code: string; label: string; unit: string; value: number | null; indent: boolean; section: string | null }[];
+  citation: string | null;
+}
+
 export interface NevoHit {
   code: number;
   name_nl: string;

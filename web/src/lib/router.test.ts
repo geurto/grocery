@@ -11,7 +11,7 @@ describe('routes', () => {
     for (const route of [
       { name: 'lists' as const },
       { name: 'list' as const, id: 3 },
-      { name: 'new' as const },
+      { name: 'list-recipes' as const, id: 3 },
       { name: 'recipes' as const },
       { name: 'recipe' as const, path: 'soups/Tomato soup & bread.cook', servings: 3 },
       { name: 'recipe' as const, path: 'Shakshuka.cook', servings: undefined },

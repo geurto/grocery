@@ -111,6 +111,97 @@ fn index_follows_the_files() {
     );
 }
 
+/// A list can start empty and grow: typed items land in their food's
+/// aisle, and recipes merge into what's there.
+#[test]
+fn lists_grow_by_hand_and_by_recipe() {
+    let (_dir, lib) = scratch_library();
+    let mut store = Store::open_in_memory().unwrap();
+    let db = lib.food_db().unwrap();
+    let empty = build(&[], &db, &lib.pantry().unwrap());
+    let id = store
+        .create_list("Empty", "2026-10-16T10:00:00+02:00", &empty)
+        .unwrap();
+    assert!(store.list(id).unwrap().unwrap().items.is_empty());
+
+    let tp = store.add_item(id, "toilet paper", &db).unwrap().unwrap();
+    let melk = store.add_item(id, "Melk", &db).unwrap().unwrap();
+    let list = store.list(id).unwrap().unwrap();
+    let names: Vec<_> = list
+        .items
+        .iter()
+        .map(|i| (i.id, i.item.name.as_str(), i.item.aisle.as_deref()))
+        .collect();
+    // "Melk" is the food "milk" with its aisle, sorted before aisle-less items.
+    assert_eq!(names[0].0, melk);
+    assert_eq!(names[0].1, "milk");
+    assert!(names[0].2.is_some());
+    assert_eq!(names[1], (tp, "toilet paper", None));
+    store.set_checked(id, melk, true).unwrap();
+
+    let pasta = lib
+        .parser
+        .parse_file(&lib.find_recipe("Pasta arrabbiata").unwrap())
+        .unwrap();
+    let built = build(
+        &[Selection {
+            recipe: &pasta,
+            servings: Some(2.0),
+        }],
+        &db,
+        &lib.pantry().unwrap(),
+    );
+    assert!(store.add_recipes(id, &built, &db).unwrap());
+    assert!(!store.add_recipes(id + 100, &built, &db).unwrap());
+    let list = store.list(id).unwrap().unwrap();
+    assert_eq!(list.sources.len(), 1);
+    assert_eq!(list.sources[0].title, "Pasta arrabbiata");
+    assert_eq!(list.items.len(), 2 + built.items.len());
+    // Still in walking order, hand-added items without an aisle last.
+    assert_eq!(list.items.last().unwrap().item.name, "toilet paper");
+    let aisles: Vec<_> = list.items.iter().map(|i| i.item.aisle.clone()).collect();
+    let order = db.aisle_order();
+    let rank = |a: &Option<String>| {
+        a.as_ref().map_or(usize::MAX, |a| {
+            order.iter().position(|o| o == a).unwrap_or(order.len())
+        })
+    };
+    assert!(
+        aisles.windows(2).all(|w| rank(&w[0]) <= rank(&w[1])),
+        "{aisles:?}"
+    );
+    // The ticked milk wasn't touched (pasta has no milk).
+    assert!(
+        list.items
+            .iter()
+            .find(|i| i.id == melk)
+            .unwrap()
+            .item
+            .checked
+    );
+
+    // The same recipe again doubles the amounts on the same lines.
+    let before = list.items.len();
+    store.add_recipes(id, &built, &db).unwrap();
+    let again = store.list(id).unwrap().unwrap();
+    assert_eq!(again.items.len(), before);
+    // Still one source, now cooked twice as much.
+    assert_eq!(again.sources.len(), 1);
+    assert_eq!(again.sources[0].servings, Some(4.0));
+    let spaghetti = |l: &grocery_store::StoredList| {
+        l.items
+            .iter()
+            .find(|i| i.item.name == "spaghetti")
+            .unwrap()
+            .item
+            .quantity
+            .clone()
+            .unwrap()
+            .value
+    };
+    assert_eq!(spaghetti(&again), 2.0 * spaghetti(&list));
+}
+
 #[test]
 fn lists_round_trip_and_tick_off() {
     let (_dir, lib) = scratch_library();
@@ -164,9 +255,9 @@ fn lists_round_trip_and_tick_off() {
         .unwrap()
         .id;
     assert!(store.set_checked(id, garlic, true).unwrap());
-    let extra = store.add_item(id, "  toilet paper ").unwrap().unwrap();
-    assert!(store.add_item(id, "").is_err());
-    assert!(store.add_item(id + 100, "x").unwrap().is_none());
+    let extra = store.add_item(id, "  toilet paper ", &db).unwrap().unwrap();
+    assert!(store.add_item(id, "", &db).is_err());
+    assert!(store.add_item(id + 100, "x", &db).unwrap().is_none());
     assert!(
         !store.set_checked(id + 100, garlic, true).unwrap(),
         "wrong list"

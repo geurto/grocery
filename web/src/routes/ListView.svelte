@@ -1,13 +1,18 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import FoodInfo from '../components/FoodInfo.svelte';
   import Header from '../components/Header.svelte';
   import { api, OfflineError } from '../lib/api';
   import { copyText, shareText, tick, WakeLock, wakeLock } from '../lib/device';
+  import { suggestFoods } from '../lib/foods';
   import { byAisle, plainText } from '../lib/format';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
+  import type { Item } from '../lib/types';
 
   let { id }: { id: number } = $props();
+
+  const UNDO_MS = 4000;
 
   const KEY = 'grocery:v1:hideTicked';
   let hideTicked = $state(localStorage.getItem(KEY) === '1');
@@ -19,11 +24,21 @@
   let newItem = $state('');
   let toast = $state<string | null>(null);
   let loadFailed = $state(false);
+  /** Edit mode: every item gets a remove button. */
+  let editing = $state(false);
+  /** Removed, but not sent yet: undo is still possible. */
+  let removed = $state<Item[]>([]);
+  let removeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** A food to show nutrition for. */
+  let info = $state<string | null>(null);
 
   const list = $derived(store.list(id));
+  const hidden = $derived(new Set(removed.map((i) => i.id)));
+  const visible = $derived(list ? list.items.filter((i) => !hidden.has(i.id)) : []);
   const groups = $derived(
-    list ? byAisle(hideTicked ? list.items.filter((i) => !i.checked) : list.items) : [],
+    byAisle(hideTicked ? visible.filter((i) => !i.checked) : visible, store.aisles),
   );
+  const suggestions = $derived(suggestFoods(store.foods, newItem));
   const allDone = $derived(!!list && list.item_count > 0 && list.checked_count === list.item_count);
 
   $effect(() => {
@@ -33,8 +48,29 @@
       void store.refreshList(listId).then(() => {
         if (!store.details[listId]) loadFailed = true;
       });
+      void store.refreshFoods();
     });
   });
+
+  // Leaving the list sends removals that are still waiting for undo.
+  $effect(() => () => commitRemovals());
+
+  function removeItem(item: Item) {
+    removed = [...removed, item];
+    clearTimeout(removeTimer);
+    removeTimer = setTimeout(commitRemovals, UNDO_MS);
+  }
+
+  function commitRemovals() {
+    clearTimeout(removeTimer);
+    for (const item of removed) store.removeItem(id, item.id);
+    removed = [];
+  }
+
+  function undoRemovals() {
+    clearTimeout(removeTimer);
+    removed = [];
+  }
 
   $effect(() => {
     localStorage.setItem(KEY, hideTicked ? '1' : '0');
@@ -57,9 +93,14 @@
 
   function add(e: SubmitEvent) {
     e.preventDefault();
-    if (!newItem.trim()) return;
-    store.addItem(id, newItem);
+    addNamed(newItem);
+  }
+
+  function addNamed(name: string) {
+    if (!name.trim()) return;
+    store.addItem(id, name);
     newItem = '';
+    info = null;
   }
 
   async function share() {
@@ -188,13 +229,29 @@
         {list.checked_count} of {list.item_count} in the basket
         {#if list.recipes.length}
           · for
-          {#each list.recipes as r, i (r.path)}
+          {#each list.recipes as r, i (i)}
             {i > 0 ? ', ' : ''}<a href={href({ name: 'recipe', path: r.path, servings: r.servings ?? undefined })}
               >{r.title}</a
             >{/each}
         {/if}
       </p>
     </div>
+
+    <div class="toolbar">
+      <a class="btn" href={href({ name: 'list-recipes', id })}>+ Recipes</a>
+      {#if list.items.length}
+        <button class="btn" class:primary={editing} aria-pressed={editing} onclick={() => (editing = !editing)}>
+          {editing ? 'Done' : 'Edit'}
+        </button>
+      {/if}
+    </div>
+
+    {#if list.items.length === 0}
+      <div class="empty">
+        <p>This list is empty.</p>
+        <p class="small">Add recipes, or type what you need below: foods you know land in their aisle.</p>
+      </div>
+    {/if}
 
     {#if allDone && list.status === 'open'}
       <div class="done-banner card">
@@ -230,12 +287,8 @@
                 </span>
                 {#if item.quantity}<span class="qty">{item.quantity}</span>{/if}
               </label>
-              {#if item.recipes.length === 0}
-                <button
-                  class="remove"
-                  aria-label="Remove {item.name}"
-                  onclick={() => store.removeItem(id, item.id)}>×</button
-                >
+              {#if editing || item.recipes.length === 0}
+                <button class="remove" aria-label="Remove {item.name}" onclick={() => removeItem(item)}>×</button>
               {/if}
             </li>
           {/each}
@@ -256,6 +309,23 @@
 </main>
 
 {#if list}
+  {#if suggestions.length}
+    <ul class="suggestions card" aria-label="Foods">
+      {#each suggestions as s (s.food.name)}
+        <li>
+          <button class="pick" onclick={() => addNamed(s.food.name)}>
+            <span class="name">{s.food.name}</span>
+            <span class="small muted">
+              {s.matched !== s.food.name ? `${s.matched} · ` : ''}{s.food.aisle ?? 'no aisle'}
+            </span>
+          </button>
+          <button class="info" aria-label="Nutrition of {s.food.name}" onclick={() => (info = s.food.name)}>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
+          </button>
+        </li>
+      {/each}
+    </ul>
+  {/if}
   <form class="add" onsubmit={add}>
     <input
       class="field"
@@ -269,8 +339,17 @@
   </form>
 {/if}
 
-{#if toast}
+{#if removed.length}
+  <div class="toast undo" role="status">
+    <span>Removed {removed.length === 1 ? removed[0].name : `${removed.length} items`}</span>
+    <button onclick={undoRemovals}>Undo</button>
+  </div>
+{:else if toast}
   <div class="toast" role="status">{toast}</div>
+{/if}
+
+{#if info}
+  <FoodInfo name={info} onclose={() => (info = null)} onadd={() => addNamed(info!)} />
 {/if}
 
 <style>
@@ -337,6 +416,61 @@
 
   .summary {
     margin: 0.25rem 0 0.75rem;
+  }
+  .toolbar {
+    display: flex;
+    gap: 0.5rem;
+    margin: 0 0 1rem;
+  }
+  .toolbar .btn {
+    min-height: 40px;
+  }
+  .suggestions {
+    position: fixed;
+    z-index: 11;
+    left: max(1rem, env(safe-area-inset-left));
+    right: max(1rem, env(safe-area-inset-right));
+    bottom: calc(4.4rem + env(safe-area-inset-bottom));
+    max-width: 38rem;
+    margin: 0 auto;
+    list-style: none;
+    padding: 0;
+    overflow: hidden;
+    box-shadow: 0 -6px 24px rgb(0 0 0 / 0.14);
+  }
+  .suggestions li {
+    display: flex;
+    align-items: center;
+  }
+  .suggestions li + li {
+    border-top: 1px solid var(--line);
+  }
+  .suggestions .pick {
+    flex: 1;
+    display: grid;
+    text-align: left;
+    padding: 0.5rem 0.9rem;
+    min-height: 48px;
+    border: 0;
+    background: none;
+  }
+  .suggestions .info {
+    flex: none;
+    width: 48px;
+    height: 48px;
+    border: 0;
+    background: none;
+    display: grid;
+    place-items: center;
+    color: var(--muted);
+  }
+  .suggestions .info svg {
+    width: 22px;
+    height: 22px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
   }
   .summary p {
     margin: 0.4rem 0 0;
@@ -513,6 +647,21 @@
     }
   }
 
+  .undo {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding-right: 0.4rem;
+  }
+  .undo button {
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-weight: 700;
+    min-height: 36px;
+    padding: 0 0.6rem;
+    filter: brightness(1.4);
+  }
   .toast {
     position: fixed;
     left: 50%;

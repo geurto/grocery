@@ -1,5 +1,5 @@
-// The list being put together on the "New list" screen. Module state, so
-// it survives a detour to look at a recipe.
+// Recipes being picked to add to a list. Module state, so the picks survive
+// a detour to look at a recipe.
 
 export interface Pick {
   path: string;
@@ -8,9 +8,17 @@ export interface Pick {
   servings: number | null;
 }
 
-export const draft = $state({ title: '', picks: [] as Pick[] });
+export const draft = $state({ list: null as number | null, picks: [] as Pick[] });
+
+/** Start picking for `list`, unless that's already going on. */
+export function draftFor(list: number) {
+  if (draft.list !== list) {
+    draft.list = list;
+    draft.picks = [];
+  }
+}
 
 export function resetDraft() {
-  draft.title = '';
+  draft.list = null;
   draft.picks = [];
 }

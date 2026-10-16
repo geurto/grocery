@@ -1,5 +1,6 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import FoodInfo from '../components/FoodInfo.svelte';
   import FoodSheet from '../components/FoodSheet.svelte';
   import Header from '../components/Header.svelte';
   import { api, OfflineError } from '../lib/api';
@@ -9,6 +10,7 @@
   let error = $state<string | null>(null);
   let query = $state('');
   let adding = $state(false);
+  let info = $state<string | null>(null);
 
   async function load() {
     try {
@@ -62,10 +64,12 @@
     <ul class="card">
       {#each shown as f (f.name)}
         <li>
-          <span class="name">{f.name}</span>
-          <span class="small muted">
-            {source(f)}{f.aisle ? ` · ${f.aisle}` : ''}{f.synonyms.length ? ` · ${f.synonyms.join(', ')}` : ''}
-          </span>
+          <button onclick={() => (info = f.name)}>
+            <span class="name">{f.name}</span>
+            <span class="small muted">
+              {source(f)}{f.aisle ? ` · ${f.aisle}` : ''}{f.synonyms.length ? ` · ${f.synonyms.join(', ')}` : ''}
+            </span>
+          </button>
         </li>
       {/each}
     </ul>
@@ -74,6 +78,10 @@
 </main>
 
 <button class="btn primary fab" onclick={() => (adding = true)}>+ Add food</button>
+
+{#if info}
+  <FoodInfo name={info} onclose={() => (info = null)} />
+{/if}
 
 {#if adding}
   <FoodSheet
@@ -95,10 +103,14 @@
     margin: 0;
     padding: 0;
   }
-  li {
+  li button {
+    width: 100%;
     display: grid;
     gap: 0.1rem;
     padding: 0.6rem 1rem;
+    border: 0;
+    background: none;
+    text-align: left;
   }
   li + li {
     border-top: 1px solid var(--line);

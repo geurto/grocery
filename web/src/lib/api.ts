@@ -5,6 +5,7 @@ import type {
   ListStatus,
   ListSummary,
   Food,
+  FoodNutrition,
   Meal,
   NevoHit,
   NewFood,
@@ -65,6 +66,8 @@ export const api = {
     request<string>('GET', `/api/lists/${id}?format=${format}`),
   createList: (recipes: { path: string; servings?: number }[], title?: string) =>
     request<List>('POST', '/api/lists', { recipes, title }),
+  addRecipes: (list: number, recipes: { path: string; servings?: number }[]) =>
+    request<List>('POST', `/api/lists/${list}/recipes`, { recipes }),
   updateList: (id: number, change: { title?: string; status?: ListStatus }) =>
     request<void>('PATCH', `/api/lists/${id}`, change),
   deleteList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),
@@ -98,6 +101,8 @@ export const api = {
     request<{ path: string }>('PUT', `/api/recipe-files/${enc(path)}`, { source, version }),
   foods: () => request<Food[]>('GET', '/api/foods'),
   aisles: () => request<string[]>('GET', '/api/aisles'),
+  foodNutrition: (name: string) =>
+    request<FoodNutrition>('GET', `/api/foods/${encodeURIComponent(name)}/nutrition`),
   addFood: (food: NewFood) => request<{ name: string }>('POST', '/api/foods', food),
   nevoSearch: (q: string) =>
     request<NevoHit[]>('GET', `/api/nevo/search?q=${encodeURIComponent(q)}&limit=12`),

@@ -24,6 +24,13 @@ describe('format', () => {
     ]);
   });
 
+  it('follows the walking order when known, for items added offline', () => {
+    const items = [item(1, 'toilet paper', null), item(2, 'feta', 'kaas'), item(3, 'onion', 'Groente'), item(4, 'x', 'zz')];
+    expect(byAisle(items, ['groente', 'kaas']).map((g) => g.aisle)).toEqual(['Groente', 'Kaas', 'Zz', 'Other']);
+    // Without it: server order, "Other" last.
+    expect(byAisle(items).map((g) => g.aisle)).toEqual(['Kaas', 'Groente', 'Zz', 'Other']);
+  });
+
   it('formats items like the server does', () => {
     expect(itemText({ ...item(1, 'garlic', null), quantity: '4 cloves' })).toBe('garlic — 4 cloves');
     expect(itemText({ ...item(1, 'basil', null), notes: ['a handful'] })).toBe('basil — a handful');

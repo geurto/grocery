@@ -1,6 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Header from '../components/Header.svelte';
+  import Sheet from '../components/Sheet.svelte';
   import StepText from '../components/StepText.svelte';
   import Stepper from '../components/Stepper.svelte';
   import { allSteps } from '../lib/cooking';
@@ -8,7 +9,6 @@
   import { durationRange } from '../lib/recipes';
   import { api, HttpError, OfflineError } from '../lib/api';
   import { copyText } from '../lib/device';
-  import { draft } from '../lib/draft.svelte';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
   import type { Recipe } from '../lib/types';
@@ -63,15 +63,27 @@
     router.go({ name: 'cook', path, servings: progress ? progress.servings : s });
   }
 
-  const inDraft = $derived(draft.picks.some((p) => p.path === path));
+  let choosingList = $state(false);
+  let adding = $state(false);
+  const openLists = $derived(store.summaries.filter((l) => l.status === 'open'));
 
-  function addToDraft() {
-    if (!recipe) return;
-    if (!inDraft) {
-      draft.picks.push({ path, title: recipe.title, servings: recipe.servings ? servings || recipe.servings : null });
+  /** Put this recipe (at the servings shown) on a list; `null` makes a new one. */
+  async function addToList(listId: number | null) {
+    if (!recipe || adding) return;
+    adding = true;
+    const pick = [{ path, servings: recipe.servings ? servings || recipe.servings : undefined }];
+    try {
+      const list = listId === null ? await store.createList(pick) : await store.addRecipes(listId, pick);
+      choosingList = false;
+      router.go({ name: 'list', id: list.id });
+    } catch (e) {
+      toast = e instanceof OfflineError ? 'Needs a connection to the server' : e instanceof Error ? e.message : String(e);
+      setTimeout(() => (toast = null), 3000);
+    } finally {
+      adding = false;
     }
-    router.go({ name: 'new' });
   }
+
 
   async function showNutrition() {
     nutritionNote = null;
@@ -178,7 +190,14 @@
           {progress ? `Continue cooking (${progress.steps.length}/${stepCount})` : 'Start cooking'}
         </button>
       {/if}
-      <button class="btn" class:primary={!stepCount} onclick={addToDraft}>{inDraft ? 'Go to new list' : 'Add to a new list'}</button>
+      <button
+        class="btn"
+        class:primary={!stepCount}
+        onclick={() => {
+          choosingList = true;
+          void store.refreshLists();
+        }}>Add to a list…</button
+      >
       <a class="btn" href={href({ name: 'recipe-edit', path })}>Edit</a>
       <button class="btn" onclick={copyMarkdown}>Copy as Markdown</button>
       {#if nutrition === null}
@@ -197,6 +216,26 @@
 
 {#if toast}
   <div class="toast" role="status">{toast}</div>
+{/if}
+
+{#if choosingList && recipe}
+  <Sheet title="Add to a list" onclose={() => (choosingList = false)}>
+    <p class="small muted">
+      {recipe.title}{recipe.servings ? `, ${servings || recipe.servings} servings` : ''}. Items already on the list are
+      added up.
+    </p>
+    <ul class="card lists">
+      <li><button disabled={adding} onclick={() => addToList(null)}><strong>+ New list</strong></button></li>
+      {#each openLists as l (l.id)}
+        <li>
+          <button disabled={adding} onclick={() => addToList(l.id)}>
+            <span>{l.title}</span>
+            <span class="small muted">{l.item_count} items</span>
+          </button>
+        </li>
+      {/each}
+    </ul>
+  </Sheet>
 {/if}
 
 <style>
@@ -302,6 +341,27 @@
   }
   .problem {
     padding: 1rem;
+  }
+  .lists {
+    list-style: none;
+    margin: 0.5rem 0 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .lists li + li {
+    border-top: 1px solid var(--line);
+  }
+  .lists button {
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: var(--tap);
+    padding: 0.5rem 1rem;
+    border: 0;
+    background: none;
+    text-align: left;
   }
   .toast {
     position: fixed;

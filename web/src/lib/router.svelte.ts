@@ -6,7 +6,7 @@ import type { Meal } from './types';
 export type Route =
   | { name: 'lists' }
   | { name: 'list'; id: number }
-  | { name: 'new' }
+  | { name: 'list-recipes'; id: number }
   | { name: 'recipes' }
   | { name: 'recipe'; path: string; servings?: number }
   | { name: 'cook'; path: string; servings?: number }
@@ -25,9 +25,9 @@ export function parse(hash: string): Route {
   const params = new URLSearchParams(query);
   const parts = path.split('/');
   if (parts[0] === 'list' && /^\d+$/.test(parts[1] ?? '')) {
+    if (parts[2] === 'recipes') return { name: 'list-recipes', id: Number(parts[1]) };
     return { name: 'list', id: Number(parts[1]) };
   }
-  if (parts[0] === 'new') return { name: 'new' };
   if (parts[0] === 'recipes') return { name: 'recipes' };
   if (parts[0] === 'foods') return { name: 'foods' };
   if (parts[0] === 'new-recipe') {
@@ -63,8 +63,8 @@ export function href(route: Route): string {
       return '#/';
     case 'list':
       return `#/list/${route.id}`;
-    case 'new':
-      return '#/new';
+    case 'list-recipes':
+      return `#/list/${route.id}/recipes`;
     case 'recipes':
       return '#/recipes';
     case 'foods':

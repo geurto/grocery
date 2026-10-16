@@ -9,12 +9,15 @@
 //! GET    /api/recipes/{path}?format=&servings=  one recipe; md/txt export
 //! GET    /api/nutrition/{path}?all=&optional=   per-serving report (text)
 //! GET    /api/lists                             newest first
-//! POST   /api/lists                             {"title"?, "recipes": [{"path", "servings"?}]}
+//! POST   /api/lists                             {"title"?, "recipes"?: [{"path", "servings"?}]}
+//!                                               (no recipes: an empty list to fill as you go)
 //! GET    /api/lists/{id}?format=                md: all items, ticked as [x]
 //!                                               txt: only what's left to buy
 //! PATCH  /api/lists/{id}                        {"title"?, "status"?: "open" | "done"}
 //! DELETE /api/lists/{id}
-//! POST   /api/lists/{id}/items                  {"name": "toilet paper"}
+//! POST   /api/lists/{id}/items                  {"name": "toilet paper"}; a known food
+//!                                               gets its own name and aisle
+//! POST   /api/lists/{id}/recipes                {"recipes": [{"path", "servings"?}]}: merged in
 //! PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 //! DELETE /api/lists/{id}/items/{item}
 //! POST   /api/recipe-check                      {"source"} → parse result, ingredients vs aliases.yaml
@@ -23,6 +26,7 @@
 //! POST   /api/recipe-files                      {"folder"?, "source"} → 201 {"path"}; 409 if it exists
 //! PUT    /api/recipe-files/{path}               {"source", "version"}; 409 if the file changed
 //! GET    /api/foods                             what aliases.yaml knows
+//! GET    /api/foods/{name}/nutrition            per 100 g (or ml), with its source
 //! POST   /api/foods                             {"name", "aisle"?, "synonyms"?, "nevo"? | "custom"? |
 //!                                                "own"? | "negligible"?, "piece_g"?, "density"?, "units"?}
 //! GET    /api/aisles
@@ -87,6 +91,7 @@ pub fn router(app: Shared) -> Router {
             get(list).patch(update_list).delete(delete_list),
         )
         .route("/api/lists/{id}/items", post(add_item))
+        .route("/api/lists/{id}/recipes", post(add_recipes))
         .route("/api/recipe-check", post(edit::check))
         .route("/api/recipe-folders", get(edit::folders))
         .route("/api/recipe-files", post(edit::create_recipe))
@@ -95,6 +100,7 @@ pub fn router(app: Shared) -> Router {
             get(edit::get_source).put(edit::update_recipe),
         )
         .route("/api/foods", get(edit::foods).post(edit::add_food))
+        .route("/api/foods/{name}/nutrition", get(edit::food_nutrition))
         .route("/api/aisles", get(edit::aisles))
         .route("/api/nevo/search", get(edit::nevo_search))
         .route("/api/people", get(plans::people).post(plans::add_person))
@@ -695,6 +701,8 @@ async fn lists(State(app): State<Shared>) -> ApiResult<Json<Vec<ListSummaryJson>
 #[derive(Deserialize)]
 struct NewList {
     title: Option<String>,
+    /// May be empty: a list to fill as you go.
+    #[serde(default)]
     recipes: Vec<NewListRecipe>,
 }
 
@@ -708,25 +716,11 @@ async fn create_list(
     State(app): State<Shared>,
     Json(req): Json<NewList>,
 ) -> ApiResult<(StatusCode, Json<ListJson>)> {
-    if req.recipes.is_empty() {
-        return Err(ApiError::bad_request("a list needs at least one recipe"));
-    }
     for r in &req.recipes {
         check_servings(r.servings)?;
     }
     blocking(&app, move |app| {
-        let mut recipes = Vec::new();
-        for r in &req.recipes {
-            recipes.push((load_recipe(app, &r.path)?.1, r.servings));
-        }
-        let selections: Vec<_> = recipes
-            .iter()
-            .map(|(recipe, servings)| Selection {
-                recipe,
-                servings: *servings,
-            })
-            .collect();
-        let built = aggregate::build(&selections, &app.library.food_db()?, &app.library.pantry()?);
+        let built = build_from(app, &req.recipes)?;
 
         let now = chrono::Local::now();
         let title = req
@@ -748,6 +742,63 @@ async fn create_list(
         json.warnings = built.warnings;
         json.unmapped = built.unmapped;
         Ok((StatusCode::CREATED, Json(json)))
+    })
+    .await
+}
+
+/// Load and aggregate the requested recipes.
+fn build_from(app: &App, requested: &[NewListRecipe]) -> ApiResult<aggregate::ShoppingList> {
+    let mut recipes = Vec::new();
+    for r in requested {
+        recipes.push((load_recipe(app, &r.path)?.1, r.servings));
+    }
+    let selections: Vec<_> = recipes
+        .iter()
+        .map(|(recipe, servings)| Selection {
+            recipe,
+            servings: *servings,
+        })
+        .collect();
+    Ok(aggregate::build(
+        &selections,
+        &app.library.food_db()?,
+        &app.library.pantry()?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct AddRecipes {
+    recipes: Vec<NewListRecipe>,
+}
+
+/// Add recipes to a list that already exists; their items merge into the
+/// lines already there.
+async fn add_recipes(
+    State(app): State<Shared>,
+    Path(id): Path<i64>,
+    Json(req): Json<AddRecipes>,
+) -> ApiResult<Json<ListJson>> {
+    if req.recipes.is_empty() {
+        return Err(ApiError::bad_request("pick at least one recipe"));
+    }
+    for r in &req.recipes {
+        check_servings(r.servings)?;
+    }
+    blocking(&app, move |app| {
+        let built = build_from(app, &req.recipes)?;
+        let db = app.library.food_db()?;
+        let mut store = app.store();
+        if !store.add_recipes(id, &built, &db)? {
+            return Err(ApiError::not_found(format!("list {id}")));
+        }
+        app.notify(Event::List { id });
+        let stored = store
+            .list(id)?
+            .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
+        let mut json = ListJson::from(stored);
+        json.warnings = built.warnings;
+        json.unmapped = built.unmapped;
+        Ok(Json(json))
     })
     .await
 }
@@ -843,7 +894,8 @@ async fn add_item(
     Json(req): Json<NewItem>,
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     blocking(&app, move |app| {
-        match app.store().add_item(id, &req.name)? {
+        let db = app.library.food_db()?;
+        match app.store().add_item(id, &req.name, &db)? {
             Some(item) => {
                 app.notify(Event::List { id });
                 Ok((StatusCode::CREATED, Json(Created { id: item })))

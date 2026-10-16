@@ -3,7 +3,7 @@
   import { store } from './lib/store.svelte';
   import ListView from './routes/ListView.svelte';
   import Lists from './routes/Lists.svelte';
-  import NewList from './routes/NewList.svelte';
+  import AddRecipes from './routes/AddRecipes.svelte';
   import Recipes from './routes/Recipes.svelte';
   import RecipeView from './routes/RecipeView.svelte';
   import TabBar from './components/TabBar.svelte';
@@ -32,8 +32,8 @@
 
 {#if route.name === 'list'}
   {#key route.id}<ListView id={route.id} />{/key}
-{:else if route.name === 'new'}
-  <NewList />
+{:else if route.name === 'list-recipes'}
+  {#key route.id}<AddRecipes id={route.id} />{/key}
 {:else if route.name === 'cook'}
   {#key route.path}<Cook path={route.path} servings={route.servings} />{/key}
 {:else if route.name === 'recipe-new'}

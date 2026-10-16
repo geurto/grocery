@@ -1,7 +1,8 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import Header from '../components/Header.svelte';
-  import { href } from '../lib/router.svelte';
+  import { OfflineError } from '../lib/api';
+  import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
   import type { ListSummary } from '../lib/types';
 
@@ -12,6 +13,24 @@
 
   const open = $derived(store.summaries.filter((l) => l.status === 'open'));
   const done = $derived(store.summaries.filter((l) => l.status === 'done'));
+
+  let creating = $state(false);
+
+  /** An empty list to fill as you go. */
+  async function newList() {
+    creating = true;
+    try {
+      const list = await store.createList();
+      router.go({ name: 'list', id: list.id });
+    } catch (e) {
+      store.notice =
+        e instanceof OfflineError
+          ? 'Making a list needs a connection to the server.'
+          : `Couldn't make a list: ${e instanceof Error ? e.message : e}`;
+    } finally {
+      creating = false;
+    }
+  }
 
   function date(created: string) {
     const d = new Date(created);
@@ -44,7 +63,7 @@
   {#if open.length === 0 && done.length === 0}
     <div class="empty">
       <p>No lists yet.</p>
-      <p class="small">Pick a few recipes and the list puts itself together, sorted by aisle.</p>
+      <p class="small">Start one, then add recipes and anything else you need; it sorts itself by aisle.</p>
     </div>
   {/if}
 
@@ -68,10 +87,10 @@
   {/if}
 </main>
 
-<a class="btn primary fab" href={href({ name: 'new' })}>
+<button class="btn primary fab" onclick={newList} disabled={creating}>
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14" /></svg>
   New list
-</a>
+</button>
 
 <style>
   ul {

@@ -276,19 +276,134 @@ fn scale_factor(
 /// Configured aisles first (in walking order), then other aisles
 /// alphabetically, then items without an aisle. Alphabetical within an aisle.
 fn sort_items(items: &mut [Item], aisle_order: &[String]) {
-    let rank = |aisle: &Option<String>| -> (usize, String) {
-        match aisle {
-            Some(a) => {
-                let norm = normalize_name(a);
-                match aisle_order.iter().position(|o| normalize_name(o) == norm) {
-                    Some(i) => (i, String::new()),
-                    None => (aisle_order.len(), norm),
-                }
+    items.sort_by_cached_key(|i| sort_key(i, aisle_order));
+}
+
+/// Where an item goes on a list: aisles in walking order, then aisles not
+/// in the walking order (alphabetically), then items without an aisle; by
+/// name within an aisle.
+pub fn sort_key(item: &Item, aisle_order: &[String]) -> (usize, String, String) {
+    let (rank, unlisted) = match &item.aisle {
+        Some(a) => {
+            let norm = normalize_name(a);
+            match aisle_order.iter().position(|o| normalize_name(o) == norm) {
+                Some(i) => (i, String::new()),
+                None => (aisle_order.len(), norm),
             }
-            None => (usize::MAX, String::new()),
         }
+        None => (usize::MAX, String::new()),
     };
-    items.sort_by_cached_key(|i| (rank(&i.aisle), i.name.to_lowercase()));
+    (rank, unlisted, item.name.to_lowercase())
+}
+
+/// An item someone typed in ("melk", "toilet paper"): the food's own name
+/// and aisle when `aliases.yaml` knows it, else as typed.
+pub fn hand_item(name: &str, db: &FoodDb) -> Item {
+    let name = name.trim();
+    let resolved = db.resolve(name);
+    Item {
+        name: resolved.map_or_else(|| name.to_owned(), |r| r.canonical.to_owned()),
+        aisle: resolved.and_then(|r| r.info.aisle.clone()),
+        quantity: None,
+        notes: vec![],
+        optional: false,
+        recipes: vec![],
+        known: resolved.is_some(),
+        checked: false,
+    }
+}
+
+/// Add `incoming` (from [`build`]) to a list's `items`. An item for the same
+/// food joins the existing line when the amounts add up: same unit, or both
+/// convertible to grams. Otherwise it gets its own line. A ticked line that
+/// now needs more is unticked, so it isn't forgotten in the shop.
+///
+/// Existing items keep their index (so callers can keep their ids); new
+/// ones are appended. Returns the indexes of existing items that changed.
+pub fn merge_into(items: &mut Vec<Item>, incoming: Vec<Item>, db: &FoodDb) -> Vec<usize> {
+    let existing = items.len();
+    let mut changed = Vec::new();
+    for new in incoming {
+        let info = db.resolve(&new.name).map(|r| r.info);
+        let grams = |q: &Qty| {
+            info.and_then(|i| {
+                FoodDb::grams(
+                    i,
+                    &units::Normalized {
+                        dim: q.dim.clone(),
+                        value: q.value,
+                    },
+                )
+            })
+        };
+        // By food, not by spelling: a line saved as "onion" before the food
+        // was renamed "ui" is still the same food.
+        let food_of = |name: &str| {
+            db.resolve(name)
+                .map_or_else(|| normalize_name(name), |r| r.canonical.to_owned())
+        };
+        let new_food = food_of(&new.name);
+        let same_food = |i: &Item| food_of(&i.name) == new_food;
+        // Best match first: the same unit, then convertible, then a line
+        // without an amount (a hand-added "milk").
+        let target = (0..items.len())
+            .filter(|&i| same_food(&items[i]))
+            .min_by_key(|&i| match (&items[i].quantity, &new.quantity) {
+                (Some(a), Some(b)) if a.dim == b.dim => 0,
+                (Some(a), Some(b)) if grams(a).is_some() && grams(b).is_some() => 1,
+                (None, _) | (_, None) => 2,
+                _ => 3,
+            })
+            .filter(|&i| match (&items[i].quantity, &new.quantity) {
+                (Some(a), Some(b)) => a.dim == b.dim || (grams(a).is_some() && grams(b).is_some()),
+                _ => true,
+            });
+
+        let Some(i) = target else {
+            items.push(new);
+            continue;
+        };
+        let item = &mut items[i];
+        let more = new.quantity.is_some();
+        item.quantity = match (item.quantity.take(), new.quantity) {
+            (Some(a), Some(b)) if a.dim == b.dim => Some(Qty {
+                value: a.value + b.value,
+                ..a
+            }),
+            (Some(a), Some(b)) => match (grams(&a), grams(&b)) {
+                (Some(x), Some(y)) => Some(Qty {
+                    dim: Dim::Mass,
+                    value: x + y,
+                    label: None,
+                }),
+                _ => Some(a), // unreachable: filtered above
+            },
+            (a, b) => a.or(b),
+        };
+        for n in new.notes {
+            if !item.notes.contains(&n) {
+                item.notes.push(n);
+            }
+        }
+        for r in new.recipes {
+            if !item.recipes.contains(&r) {
+                item.recipes.push(r);
+            }
+        }
+        item.known |= new.known;
+        item.optional &= new.optional;
+        if item.aisle.is_none() {
+            item.aisle = new.aisle;
+        }
+        if more {
+            item.checked = false;
+        }
+        if i < existing && !changed.contains(&i) {
+            changed.push(i);
+        }
+    }
+    changed.sort_unstable();
+    changed
 }
 
 #[cfg(test)]
@@ -332,6 +447,112 @@ mod tests {
             Path::new("aliases.yaml"),
         )
         .unwrap()
+    }
+
+    fn qty(dim: Dim, value: f64) -> Option<Qty> {
+        Some(Qty {
+            dim,
+            value,
+            label: None,
+        })
+    }
+
+    #[test]
+    fn hand_items_get_the_foods_name_and_aisle() {
+        let ui = hand_item(" Ui ", &db());
+        assert_eq!(
+            (ui.name.as_str(), ui.aisle.as_deref(), ui.known),
+            ("onion", Some("groente"), true)
+        );
+        let tp = hand_item("toilet paper", &db());
+        assert_eq!(
+            (tp.name.as_str(), tp.aisle, tp.known),
+            ("toilet paper", None, false)
+        );
+    }
+
+    #[test]
+    fn merging_a_recipe_into_a_list() {
+        let db = db();
+        let mut milk = hand_item("milk", &db);
+        milk.checked = true;
+        let mut onions = hand_item("onion", &db);
+        onions.quantity = qty(Dim::Count, 2.0);
+        onions.checked = true;
+        onions.recipes = vec!["Soup".into()];
+        let mut salt = hand_item("salt", &db);
+        salt.checked = true;
+        let mut items = vec![milk, onions, salt];
+
+        let recipe = recipe(
+            "Curry",
+            Some(2.0),
+            &[
+                ("ui", Amount::value(220.0, Some("g"))),
+                ("milk", Amount::value(500.0, Some("ml"))),
+                ("salt", Amount::Unspecified),
+                ("garlic", Amount::value(2.0, Some("cloves"))),
+            ],
+        );
+        let built = build(
+            &[Selection {
+                recipe: &recipe,
+                servings: None,
+            }],
+            &db,
+            &Pantry::default(),
+        );
+        let changed = merge_into(&mut items, built.items, &db);
+        assert_eq!(changed, [0, 1, 2]);
+
+        // 2 onions (220 g) + 220 g = 440 g: converted, since the food has a piece weight.
+        assert_eq!(items[1].quantity, qty(Dim::Mass, 440.0));
+        assert_eq!(items[1].recipes, ["Soup", "Curry"]);
+        assert!(!items[1].checked, "more is needed now: unticked");
+        // A hand-added line without an amount takes the recipe's amount.
+        assert_eq!(items[0].quantity, qty(Dim::Volume, 500.0));
+        assert!(!items[0].checked);
+        // "to taste" adds nothing to buy: stays ticked.
+        assert!(items[2].checked);
+        assert_eq!(items[2].recipes, ["Curry"]);
+        // New food: a new line at the end.
+        assert_eq!(items.len(), 4);
+        assert_eq!(items[3].name, "garlic");
+    }
+
+    #[test]
+    fn amounts_that_dont_add_up_stay_separate() {
+        let db = db();
+        let mut items = vec![Item {
+            quantity: qty(Dim::Volume, 500.0),
+            ..hand_item("milk", &db)
+        }];
+        // milk has no density: ml and g can't be added.
+        let incoming = vec![Item {
+            quantity: qty(Dim::Mass, 100.0),
+            ..hand_item("milk", &db)
+        }];
+        assert!(merge_into(&mut items, incoming, &db).is_empty());
+        assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn lines_saved_under_an_old_name_still_merge() {
+        let db = db();
+        // A list saved when the food was still called "ui"; now it's "onion"
+        // with "ui" as a synonym.
+        let mut items = vec![Item {
+            name: "ui".into(),
+            quantity: qty(Dim::Count, 1.0),
+            ..hand_item("onion", &db)
+        }];
+        let incoming = vec![Item {
+            quantity: qty(Dim::Count, 2.0),
+            ..hand_item("onion", &db)
+        }];
+        assert_eq!(merge_into(&mut items, incoming, &db), [0]);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].quantity, qty(Dim::Count, 3.0));
     }
 
     fn find<'a>(list: &'a ShoppingList, name: &str) -> Vec<&'a Item> {
