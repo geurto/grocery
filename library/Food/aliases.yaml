@@ -27,6 +27,7 @@ aisles:
   - kruiden & specerijen
   - ontbijt & bakproducten
   - olie & azijn
+  - diepvries
 
 foods:
   ### groente & fruit ###
@@ -137,6 +138,134 @@ foods:
     nevo: 1             # Aardappelen rauw (weighed raw, as bought)
     aisle: groente & fruit
     synonyms: [aardappelen, krieltjes, floury potato]
+  broccoli:
+    nevo: 921           # Broccoli rauw
+    piece_g: 400
+    aisle: groente & fruit
+    synonyms: [broccoliroosjes]
+  andijvie:
+    nevo: 7             # Andijvie rauw
+    aisle: groente & fruit
+    synonyms: [escarole, curly endive]
+  witlof:
+    nevo: 67            # Witlof rauw
+    piece_g: 125
+    aisle: groente & fruit
+    synonyms: [witloof, chicory, belgian endive]
+  prei:
+    nevo: 562           # Prei rauw
+    piece_g: 250
+    aisle: groente & fruit
+    synonyms: [preien, leek]
+  lente-ui:
+    nevo: 2737          # Ui sla- rauw
+    piece_g: 15
+    aisle: groente & fruit
+    synonyms: [lenteui, lente-uitjes, bosui, bosuitjes, spring onion, scallion, green onion]
+  bleekselderij:
+    nevo: 557           # Selderij bleek- rauw
+    units: { stengel: 40, stengels: 40 }
+    aisle: groente & fruit
+    synonyms: [selderij, stengelselderij, celery]
+  knolselderij:
+    nevo: 558           # Selderij knol- rauw
+    piece_g: 800
+    aisle: groente & fruit
+    synonyms: [celeriac]
+  rode biet:
+    nevo: 12            # Biet rode rauw (vacuum-packed cooked beets: no raw-weight match)
+    piece_g: 150
+    aisle: groente & fruit
+    synonyms: [rode bieten, biet, bieten, beetroot]
+  pompoen:
+    nevo: 682           # Pompoen rauw
+    aisle: groente & fruit
+    synonyms: [flespompoen, butternut, butternut squash, pumpkin]
+  pastinaak:
+    nevo: 3127          # Pastinaak rauw
+    piece_g: 200
+    aisle: groente & fruit
+    synonyms: [parsnip]
+  spruitjes:
+    nevo: 564           # Spruitjes rauw
+    aisle: groente & fruit
+    synonyms: [spruiten, brussels sprouts]
+  rode kool:
+    nevo: 41            # Kool rode rauw
+    piece_g: 1000
+    aisle: groente & fruit
+    synonyms: [red cabbage]
+  witte kool:
+    nevo: 69            # Kool witte rauw
+    piece_g: 1000
+    aisle: groente & fruit
+    synonyms: [white cabbage]
+  chinese kool:
+    nevo: 21            # Kool Chinese rauw
+    piece_g: 800
+    aisle: groente & fruit
+    synonyms: [napa cabbage]
+  paksoi:
+    nevo: 1892          # Paksoi rauw
+    piece_g: 250
+    aisle: groente & fruit
+    synonyms: [pak choi, bok choy]
+  peultjes:
+    nevo: 35            # Peultjes rauw
+    aisle: groente & fruit
+    synonyms: [snow peas, mangetout]
+  groene asperges:
+    nevo: 3220          # Asperge groene rauw
+    aisle: groente & fruit
+    synonyms: [green asparagus]
+  witte asperges:
+    nevo: 9             # Asperge witte rauw
+    aisle: groente & fruit
+    synonyms: [asperges, white asparagus]
+  snijbiet:
+    nevo: 563           # Snijbiet rauw
+    aisle: groente & fruit
+    synonyms: [swiss chard, chard]
+  radijs:
+    nevo: 124           # Radijs rauw
+    piece_g: 10
+    aisle: groente & fruit
+    synonyms: [radijsjes, radish]
+  okra:
+    nevo: 680           # Okra rauw
+    aisle: groente & fruit
+    synonyms: [okra's]
+  roerbakgroenten:
+    nevo: 5270          # Groente roerbakmix oosterse rauw
+    aisle: groente & fruit
+    synonyms: [wokgroenten, roerbakmix, stir-fry vegetables]
+  soepgroenten:
+    nevo: 75            # Groente soep- rauw
+    aisle: groente & fruit
+    synonyms: [soepgroente, soup vegetables]
+  ## sla
+  ijsbergsla:
+    nevo: 1399          # Sla ijsberg- rauw
+    piece_g: 500
+    aisle: groente & fruit
+    synonyms: [iceberg, iceberg lettuce]
+  romaine sla:
+    nevo: 3332          # Sla romaine rauw
+    piece_g: 300
+    aisle: groente & fruit
+    synonyms: [romainesla, little gem, cos lettuce, romaine]
+  veldsla:
+    nevo: 65            # Sla veld- rauw
+    aisle: groente & fruit
+    synonyms: [lamb's lettuce, corn salad]
+  gemengde sla:
+    nevo: 2346          # Sla gem rauw
+    aisle: groente & fruit
+    synonyms: [slamix, melange sla, mesclun, salad mix, mixed greens]
+  tuinkers:
+    nevo: 126           # Sterkers rauw
+    aisle: groente & fruit
+    synonyms: [sterkers, cress]
   ## verse kruiden
   peterselie:
     nevo: 128
@@ -154,6 +283,14 @@ foods:
     nevo: 2177          # Basilicum vers (the AH label values were exactly this)
     aisle: groente & fruit
     synonyms: [holy basil, thai basil]
+  munt:
+    nevo: 3450          # Munt vers
+    aisle: groente & fruit
+    synonyms: [verse munt, mint, fresh mint]
+  bieslook:
+    nevo: 829           # Bieslook vers
+    aisle: groente & fruit
+    synonyms: [chives]
   gember:
     nevo: 832
     aisle: groente & fruit
@@ -201,6 +338,103 @@ foods:
     nevo: 161
     aisle: groente & fruit
     synonyms: [raspberries]
+  bramen:
+    nevo: 157           # Bramen
+    aisle: groente & fruit
+    synonyms: [blackberries]
+  rode bessen:
+    nevo: 153           # Bessen rode
+    aisle: groente & fruit
+    synonyms: [redcurrants]
+  appel:
+    nevo: 875           # Appel m schil gem
+    piece_g: 180
+    aisle: groente & fruit
+    synonyms: [appels, apple]
+  peer:
+    nevo: 2748          # Peer m schil
+    piece_g: 180
+    aisle: groente & fruit
+    synonyms: [peren, pear]
+  sinaasappel:
+    nevo: 171           # Sinaasappel
+    piece_g: 150        # edible part
+    aisle: groente & fruit
+    synonyms: [sinaasappels, handsinaasappel, orange]
+  mandarijn:
+    nevo: 165           # Mandarijn
+    piece_g: 60         # edible part
+    aisle: groente & fruit
+    synonyms: [mandarijnen, clementine, clementines, tangerine]
+  grapefruit:
+    nevo: 162
+    piece_g: 250        # edible part
+    aisle: groente & fruit
+  kiwi:
+    nevo: 1056          # Kiwi groene
+    piece_g: 70
+    aisle: groente & fruit
+    synonyms: [kiwi's]
+  mango:
+    nevo: 692
+    piece_g: 250        # flesh of one mango
+    aisle: groente & fruit
+  ananas:
+    nevo: 150           # Ananas (vers)
+    piece_g: 800        # flesh of one pineapple
+    aisle: groente & fruit
+    synonyms: [pineapple]
+  druiven:
+    nevo: 160           # Druiven m schil gem
+    aisle: groente & fruit
+    synonyms: [druif, grapes]
+  granaatappel:
+    nevo: 1007
+    piece_g: 150        # seeds of one fruit
+    aisle: groente & fruit
+    synonyms: [granaatappelpitjes, pomegranate, pomegranate seeds]
+  watermeloen:
+    nevo: 1105          # Meloen water-
+    aisle: groente & fruit
+    synonyms: [watermelon]
+  meloen:
+    nevo: 5369          # Meloen gem
+    aisle: groente & fruit
+    synonyms: [galiameloen, honingmeloen, cantaloupe, melon]
+  perzik:
+    nevo: 5079          # Perzik m schil
+    piece_g: 130
+    aisle: groente & fruit
+    synonyms: [perziken, peach]
+  nectarine:
+    nevo: 1812
+    piece_g: 130
+    aisle: groente & fruit
+    synonyms: [nectarines]
+  pruimen:
+    nevo: 170           # Pruimen m schil
+    piece_g: 60
+    aisle: groente & fruit
+    synonyms: [pruim, plums]
+  kersen:
+    nevo: 163           # Kersen zoete
+    aisle: groente & fruit
+    synonyms: [cherries]
+  passievrucht:
+    nevo: 1074
+    piece_g: 20         # pulp of one fruit
+    aisle: groente & fruit
+    synonyms: [passievruchten, passion fruit]
+  papaja:
+    nevo: 693
+    piece_g: 350
+    aisle: groente & fruit
+    synonyms: [papaya]
+  verse vijgen:
+    nevo: 1010          # Vijgen vers
+    piece_g: 50
+    aisle: groente & fruit
+    synonyms: [figs, fresh figs]
 
   ### vlees & vis ###
   rookworst:
@@ -241,6 +475,82 @@ foods:
     nevo: 5247
     aisle: zuivel & eieren
     synonyms: [plantaardige griekse yoghurt, soy yoghurt]
+  volle melk:
+    nevo: 279           # Melk volle
+    density: 1.03
+    aisle: zuivel & eieren
+    synonyms: [whole milk]
+  karnemelk:
+    nevo: 289           # Melk karne-
+    density: 1.03
+    aisle: zuivel & eieren
+    synonyms: [buttermilk]
+  volle yoghurt:
+    nevo: 278           # Yoghurt volle
+    density: 1.03
+    aisle: zuivel & eieren
+    synonyms: [yoghurt, yogurt, natural yoghurt]
+  magere yoghurt:
+    nevo: 301           # Yoghurt magere
+    density: 1.03
+    aisle: zuivel & eieren
+    synonyms: [low-fat yoghurt]
+  magere kwark:
+    nevo: 305           # Kwark magere
+    aisle: zuivel & eieren
+    synonyms: [kwark, quark]
+  skyr:
+    nevo: 5295          # Skyr naturel magere
+    aisle: zuivel & eieren
+  hüttenkäse:
+    nevo: 654           # Kaas huttenkase
+    aisle: zuivel & eieren
+    synonyms: [huttenkase, cottage cheese]
+  slagroom:
+    nevo: 299           # Room slag- onbereid
+    density: 1.0
+    aisle: zuivel & eieren
+    synonyms: [room, cream, whipping cream]
+  kookroom:
+    nevo: 2275          # Room kook-
+    density: 1.0
+    aisle: zuivel & eieren
+    synonyms: [cooking cream]
+  zure room:
+    nevo: 812           # Room zure
+    aisle: zuivel & eieren
+    synonyms: [sour cream]
+  crème fraîche:
+    nevo: 1808          # Creme fraiche
+    aisle: zuivel & eieren
+    synonyms: [creme fraiche, crème fraiche]
+  # Plant drinks sit by the dairy. Unfortified unless noted; the fortified
+  # (calcium, B12, ...) variants have their own NEVO codes.
+  sojadrink:
+    nevo: 3180          # Drink soja- z suiker verrijkt (870 = niet verrijkt)
+    density: 1.03
+    aisle: zuivel & eieren
+    synonyms: [sojamelk, soy milk, soy drink]
+  kokosdrink:
+    nevo: 5543          # Drink kokos- z suiker
+    density: 1.0
+    aisle: zuivel & eieren
+    synonyms: [kokosdrank, coconut drink]
+  rijstdrink:
+    nevo: 5101          # Drink rijst- z suiker
+    density: 1.0
+    aisle: zuivel & eieren
+    synonyms: [rijstmelk, rice milk, rice drink]
+  haverroom:
+    nevo: 5569          # Plantaardig alternatief voor room obv haver
+    density: 1.0
+    aisle: zuivel & eieren
+    synonyms: [haver cuisine, oat cream, plantaardige kookroom]
+  sojaroom:
+    nevo: 2262          # Plantaardig alternatief voor room obv soja
+    density: 1.0
+    aisle: zuivel & eieren
+    synonyms: [soja cuisine, soy cream]
 
   ### kaas ###
   feta:
@@ -254,6 +564,12 @@ foods:
   mozzarella:
     nevo: 1955
     aisle: kaas
+  ricotta:
+    nevo: 3377          # Kaas Ricotta
+    aisle: kaas
+  mascarpone:
+    nevo: 2925          # Kaas Mascarpone
+    aisle: kaas
 
   ### plantaardig ###
   tempeh:
@@ -266,6 +582,13 @@ foods:
   hummus:
     nevo: 3207        # Hummus naturel
     aisle: plantaardig
+  seitan:
+    nevo: 1458          # Seitan gekruid
+    aisle: plantaardig
+  jackfruit:
+    nevo: 5544          # Jackfruit in water blik
+    aisle: plantaardig
+    synonyms: [jackfruit in blik]
 
   ### pasta, rijst & wereldkeuken ###
   spaghetti:
@@ -298,6 +621,59 @@ foods:
     nevo: 2359
     aisle: pasta, rijst & wereldkeuken
     synonyms: [tortilla, tortilla's]
+  pasta:
+    nevo: 4             # Pasta witte rauw (dry)
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [penne, fusilli, macaroni, rigatoni, farfalle, tagliatelle, linguine, orzo]
+  volkoren pasta:
+    nevo: 811           # Pasta volkoren rauw
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [volkorenpasta, volkoren spaghetti, whole wheat pasta]
+  quinoa:
+    nevo: 3153          # Quinoa rauw
+    aisle: pasta, rijst & wereldkeuken
+  couscous:
+    nevo: 1889          # Couscous rauw
+    aisle: pasta, rijst & wereldkeuken
+  volkoren couscous:
+    nevo: 5518          # Couscous volkoren rauw
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [whole wheat couscous]
+  bulgur:
+    nevo: 1015          # Tarwe gebroken bulgur rauw
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [bulgur tarwe, bulghur]
+  parelgort:
+    nevo: 212           # Gort parel- rauw
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [gort, pearl barley]
+  boekweit:
+    nevo: 1019          # Grutten boekweit-
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [boekweitgrutten, buckwheat]
+  gierst:
+    nevo: 847           # Gierst rauw
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [millet]
+  gedroogde spliterwten:
+    nevo: 686           # Erwten split- gele/groene gedroogd
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [spliterwten, split peas]
+  nori:
+    nevo: 3227          # Zeewier nori gedroogd
+    piece_g: 3          # one sheet
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [nori vellen, norivellen, nori sheets]
+  miso:
+    nevo: 871           # Sojapasta miso
+    density: 1.15
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [misopasta, witte miso, miso paste]
+  tahin:
+    nevo: 1461          # Pasta sesam- tahin m toegevoegd zout
+    density: 1.0        # ~15 g per el
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [tahini, sesampasta]
 
   ### conserven & sauzen
   oestersaus:
@@ -401,6 +777,54 @@ foods:
     density: 0.98
     aisle: conserven & sauzen
     synonyms: [droge sherry, medium sherry]
+  linzen:
+    nevo: 5169          # Linzen bruine blik/glas
+    aisle: conserven & sauzen
+    synonyms: [linzen in blik, lentils, canned lentils]
+  cannellini bonen:
+    nevo: 5170          # Bonen cannellini blik/glas
+    aisle: conserven & sauzen
+    synonyms: [cannellini, cannellini beans]
+  bruine bonen:
+    nevo: 660           # Bonen bruine blik/glas
+    aisle: conserven & sauzen
+    synonyms: [brown beans]
+  kapucijners:
+    nevo: 196           # Kapucijners blik/glas
+    aisle: conserven & sauzen
+    synonyms: [marrowfat peas]
+  black eyed bonen:
+    nevo: 5167          # Bonen black eyed blik/glas
+    aisle: conserven & sauzen
+    synonyms: [black-eyed peas, black eyed peas]
+  mais:
+    nevo: 2900          # Mais blik/glas
+    aisle: conserven & sauzen
+    synonyms: [maïs, suikermais, sweetcorn, corn]
+  zongedroogde tomaten:
+    nevo: 2377          # Tomaat gedroogd in olie blik/glas, uitgelekt
+    aisle: conserven & sauzen
+    synonyms: [zongedroogde tomaten in olie, sun-dried tomatoes]
+  kappertjes:
+    nevo: 2402
+    aisle: conserven & sauzen
+    synonyms: [capers]
+  zwarte olijven:
+    nevo: 3221          # Olijven zwart in water blik/glas
+    aisle: conserven & sauzen
+    synonyms: [black olives]
+  groene olijven:
+    nevo: 137           # Olijven groen in water blik/glas
+    aisle: conserven & sauzen
+    synonyms: [olijven, green olives, olives]
+  santen:
+    nevo: 809           # Santen kokoscreme vast
+    aisle: conserven & sauzen
+    synonyms: [santenblok, kokoscrème, creamed coconut]
+  appelmoes:
+    nevo: 1182          # Appelmoes z suiker blik/glas (179 = met suiker)
+    aisle: conserven & sauzen
+    synonyms: [appelmoes zonder suiker, applesauce, unsweetened applesauce]
 
   ### kruiden & specerijen ###
   komijn:
@@ -458,6 +882,36 @@ foods:
     custom: tacokruiden 
     aisle: kruiden & specerijen
     synonyms: [taco kruidenmix, taco seasoning]
+  oregano:
+    nevo: 1228          # Oregano gedroogd
+    density: 0.2        # dried leaves, ~1 g per tl
+    aisle: kruiden & specerijen
+    synonyms: [gedroogde oregano, dried oregano]
+  gedroogde rozemarijn:
+    nevo: 1231          # Rozemarijn gedroogd
+    density: 0.25
+    aisle: kruiden & specerijen
+    synonyms: [rozemarijn, rosemary]
+  gedroogde basilicum:
+    nevo: 1220          # Basilicum gedroogd
+    density: 0.2
+    aisle: kruiden & specerijen
+    synonyms: [dried basil]
+  nootmuskaat:
+    nevo: 825
+    density: 0.45       # ground, ~2.2 g per tl
+    aisle: kruiden & specerijen
+    synonyms: [nutmeg]
+  kruidnagel:
+    nevo: 828
+    density: 0.45
+    aisle: kruiden & specerijen
+    synonyms: [kruidnagels, cloves]
+  kerriepoeder:
+    nevo: 1223          # Kerrie djawa
+    density: 0.45
+    aisle: kruiden & specerijen
+    synonyms: [kerrie, curry powder]
   # Below: not counted. Garam masala has no entry in NEVO, Ciqual or USDA
   # Foundation Foods; saffron and bay leaf stay under 0.5% of any reference
   # intake per serving at recipe amounts (and bay leaves are not eaten).
@@ -542,6 +996,222 @@ foods:
     nevo: 5089
     aisle: ontbijt & bakproducten
     synonyms: [icing sugar, confectioners sugar, powdered sugar]
+  bruine basterdsuiker:
+    nevo: 374           # Suiker basterd- bruine
+    density: 0.8
+    aisle: ontbijt & bakproducten
+    synonyms: [basterdsuiker, brown sugar]
+  honing:
+    nevo: 443
+    density: 1.42       # ~21 g per el
+    aisle: ontbijt & bakproducten
+    synonyms: [honey]
+  rijststroop:
+    nevo: 1653          # Stroop rijstmout-
+    density: 1.4
+    aisle: ontbijt & bakproducten
+    synonyms: [rice syrup]
+  appelstroop:
+    nevo: 427           # Stroop appel- rinse
+    density: 1.4
+    aisle: ontbijt & bakproducten
+    synonyms: [apple syrup]
+  ## bakken
+  tarwebloem:
+    nevo: 220           # Bloem tarwe-
+    density: 0.53       # ~8 g per el
+    aisle: ontbijt & bakproducten
+    synonyms: [bloem, patentbloem, flour, all-purpose flour, plain flour]
+  zelfrijzend bakmeel:
+    nevo: 1020          # Meel bak- zelfrijzend
+    density: 0.53
+    aisle: ontbijt & bakproducten
+    synonyms: [zelfrijzende bloem, self-raising flour]
+  volkorenmeel:
+    nevo: 222           # Meel tarwe- volkoren
+    density: 0.5
+    aisle: ontbijt & bakproducten
+    synonyms: [volkoren tarwemeel, whole wheat flour, wholemeal flour]
+  speltbloem:
+    nevo: 5576          # Bloem spelt-
+    density: 0.53
+    aisle: ontbijt & bakproducten
+    synonyms: [spelt flour]
+  volkoren speltmeel:
+    nevo: 5577          # Meel spelt- volkoren
+    density: 0.5
+    aisle: ontbijt & bakproducten
+    synonyms: [speltmeel, whole spelt flour]
+  havermeel:
+    nevo: 5581          # Meel haver- volkoren
+    density: 0.4
+    aisle: ontbijt & bakproducten
+    synonyms: [oat flour]
+  boekweitmeel:
+    nevo: 208           # Meel boekweit-
+    density: 0.5
+    aisle: ontbijt & bakproducten
+    synonyms: [buckwheat flour]
+  rijstebloem:
+    nevo: 80            # Bloem rijste-
+    density: 0.6
+    aisle: ontbijt & bakproducten
+    synonyms: [rijstmeel, rice flour]
+  amandelmeel:
+    nevo: 5579          # Meel amandel-
+    density: 0.4
+    aisle: ontbijt & bakproducten
+    synonyms: [gemalen amandelen, almond flour, ground almonds]
+  kokosmeel:
+    nevo: 5586          # Meel kokos-
+    density: 0.45
+    aisle: ontbijt & bakproducten
+    synonyms: [coconut flour]
+  maizena:
+    nevo: 215           # Maizena
+    density: 0.55
+    aisle: ontbijt & bakproducten
+    synonyms: [maïzena, maiszetmeel, cornstarch, cornflour]
+  gedroogde gist:
+    nevo: 1025          # Gist gedroogd
+    units: { zakje: 7, zakjes: 7 }
+    density: 0.6
+    aisle: ontbijt & bakproducten
+    synonyms: [droge gist, instant gist, dried yeast, instant yeast]
+  verse gist:
+    nevo: 950           # Gist vers
+    aisle: ontbijt & bakproducten
+    synonyms: [fresh yeast]
+  pure chocolade:
+    nevo: 432           # Chocolade puur
+    aisle: ontbijt & bakproducten
+    synonyms: [chocolade, pure chocolate, dark chocolate, chocolate chips]
+  extra pure chocolade:
+    nevo: 5147          # Chocolade extra puur
+    aisle: ontbijt & bakproducten
+    synonyms: [extra dark chocolate, 70% chocolate]
+  kokosrasp:
+    nevo: 5497          # Kokos geraspt gedroogd
+    density: 0.35
+    aisle: ontbijt & bakproducten
+    synonyms: [geraspte kokos, desiccated coconut, shredded coconut]
+  gelatine:
+    nevo: 439
+    units: { blaadje: 1.7, blaadjes: 1.7 }
+    aisle: ontbijt & bakproducten
+    synonyms: [gelatineblaadjes, gelatine sheets, gelatin]
+  agar agar:
+    nevo: 1898          # Zeewier agar agar gedroogd
+    density: 0.5
+    aisle: ontbijt & bakproducten
+    synonyms: [agar, agar-agar]
+  ## ontbijt
+  muesli:
+    nevo: 2809          # Muesli m fruit/naturel
+    aisle: ontbijt & bakproducten
+  haverzemelen:
+    nevo: 3058          # Zemelen haver-
+    density: 0.4
+    aisle: ontbijt & bakproducten
+    synonyms: [oat bran]
+  ## noten & zaden
+  amandelen:
+    nevo: 5049          # Noten amandelen m vliesje ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [ongezouten amandelen, almonds]
+  walnoten:
+    nevo: 206           # Noten wal- ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [walnuts]
+  hazelnoten:
+    nevo: 200           # Noten hazel- ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [hazelnuts]
+  pecannoten:
+    nevo: 1895          # Noten pecan- ongebrand ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [pecans, pecan nuts]
+  pistachenoten:
+    nevo: 5112          # Noten pistache ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [pistache, pistachios]
+  paranoten:
+    nevo: 203           # Noten para- ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [brazil nuts]
+  macadamianoten:
+    nevo: 2844          # Noten macadamia- ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [macadamia, macadamia nuts]
+  gemengde noten:
+    nevo: 207           # Noten gemengd ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [notenmix, mixed nuts]
+  pinda's:
+    nevo: 204           # Pinda's ongezouten
+    aisle: ontbijt & bakproducten
+    synonyms: [pinda, ongezouten pinda's, peanuts]
+  pijnboompitten:
+    nevo: 2176
+    aisle: ontbijt & bakproducten
+    synonyms: [pine nuts]
+  pompoenpitten:
+    nevo: 2806
+    density: 0.55
+    aisle: ontbijt & bakproducten
+    synonyms: [pumpkin seeds, pepitas]
+  zonnebloempitten:
+    nevo: 872
+    density: 0.55
+    aisle: ontbijt & bakproducten
+    synonyms: [sunflower seeds]
+  sesamzaad:
+    nevo: 838           # Sesamzaad z schil
+    density: 0.6
+    aisle: ontbijt & bakproducten
+    synonyms: [sesam, sesamzaadjes, sesame seeds]
+  hennepzaad:
+    nevo: 3446
+    density: 0.6
+    aisle: ontbijt & bakproducten
+    synonyms: [hennepzaden, hemp seeds, hemp hearts]
+  maanzaad:
+    nevo: 2805
+    density: 0.6
+    aisle: ontbijt & bakproducten
+    synonyms: [poppy seeds]
+  pindakaas 100%:
+    nevo: 5275          # Pindakaas 100% pinda's ongezouten
+    density: 1.07
+    aisle: ontbijt & bakproducten
+    synonyms: [100% pindakaas, natural peanut butter]
+  ## gedroogd fruit
+  dadels:
+    nevo: 181           # Dadels gedroogd (medjool too: they're semi-dried)
+    piece_g: 20
+    aisle: ontbijt & bakproducten
+    synonyms: [medjoul dadels, medjool dadels, dates, medjool dates]
+  rozijnen:
+    nevo: 33            # Rozijnen gedroogd
+    aisle: ontbijt & bakproducten
+    synonyms: [raisins]
+  gedroogde cranberries:
+    nevo: 2890          # Cranberry gedroogd gezoet
+    aisle: ontbijt & bakproducten
+    synonyms: [cranberries, dried cranberries]
+  gedroogde vijgen:
+    nevo: 193           # Vijgen gedroogd
+    piece_g: 20
+    aisle: ontbijt & bakproducten
+    synonyms: [dried figs]
+  gedroogde pruimen:
+    nevo: 190           # Pruimen gedroogd
+    aisle: ontbijt & bakproducten
+    synonyms: [prunes]
+  gojibessen:
+    nevo: 3445          # Bessen goji- gedroogd
+    aisle: ontbijt & bakproducten
+    synonyms: [goji, goji berries]
 
   ### olie & azijn ###
   olijfolie:
@@ -563,6 +1233,100 @@ foods:
     nevo: 2615
     aisle: olie & azijn
     synonyms: [witte wijnazijn, rode wijnazijn, appelciderazijn, vinegar]
+  sesamolie:
+    nevo: 3376          # Olie sesam-
+    density: 0.92
+    aisle: olie & azijn
+    synonyms: [geroosterde sesamolie, sesame oil, toasted sesame oil]
+  koolzaadolie:
+    nevo: 3449          # Olie koolzaad-/raapzaad-
+    density: 0.92
+    aisle: olie & azijn
+    synonyms: [raapzaadolie, rapeseed oil, canola oil]
+  lijnzaadolie:
+    nevo: 3051          # Olie lijnzaad-
+    density: 0.93
+    aisle: olie & azijn
+    synonyms: [flaxseed oil, linseed oil]
+  arachideolie:
+    nevo: 308           # Olie arachide-
+    density: 0.91
+    aisle: olie & azijn
+    synonyms: [pinda-olie, peanut oil]
+
+  ### diepvries ###
+  # Frozen fruit is frozen raw, so it uses the fresh NEVO entry (NEVO has no
+  # frozen fruit). Frozen vegetables are blanched first; NEVO has a few as
+  # "diepvries onbereid", the rest use the raw entry (close: blanching only
+  # leaches a little vitamin C and folate).
+  diepvries spinazie:
+    nevo: 1146          # Spinazie gesneden diepvries onbereid
+    aisle: diepvries
+    synonyms: [diepvriesspinazie, spinazie diepvries, frozen spinach]
+  doperwten:
+    nevo: 23            # Doperwten rauw (NEVO has no frozen-unprepared peas)
+    aisle: diepvries
+    synonyms: [erwten, erwtjes, diepvries doperwten, peas, green peas, frozen peas]
+  doperwten en wortelen:
+    nevo: 1139          # Doperwten m wortelen diepvries onbereid
+    aisle: diepvries
+    synonyms: [erwten en wortelen, peas and carrots]
+  diepvries tuinbonen:
+    nevo: 1148          # Bonen tuin- diepvries onbereid
+    aisle: diepvries
+    synonyms: [frozen broad beans]
+  diepvries snijbonen:
+    nevo: 1143          # Bonen snij- diepvries onbereid
+    aisle: diepvries
+    synonyms: [snijbonen, frozen runner beans]
+  diepvries andijvie:
+    nevo: 1136          # Andijvie diepvries onbereid
+    aisle: diepvries
+    synonyms: [frozen endive]
+  diepvries sperziebonen:
+    nevo: 50            # Bonen sperzie- rauw
+    aisle: diepvries
+    synonyms: [frozen green beans]
+  diepvries broccoli:
+    nevo: 921           # Broccoli rauw
+    aisle: diepvries
+    synonyms: [frozen broccoli]
+  diepvries bloemkool:
+    nevo: 14            # Kool bloem- rauw
+    aisle: diepvries
+    synonyms: [frozen cauliflower]
+  diepvries boerenkool:
+    nevo: 959           # Kool boeren- rauw (NEVO's frozen kale is cooked only)
+    aisle: diepvries
+    synonyms: [frozen kale]
+  diepvries bosvruchten:
+    nevo: 5279          # Vruchten bos- gem
+    aisle: diepvries
+    synonyms: [bosvruchten, bessenmix, frozen berries, mixed berries, forest fruits]
+  diepvries aardbeien:
+    nevo: 148           # Aardbeien
+    aisle: diepvries
+    synonyms: [frozen strawberries]
+  diepvries frambozen:
+    nevo: 161           # Frambozen
+    aisle: diepvries
+    synonyms: [frozen raspberries]
+  diepvries blauwe bessen:
+    nevo: 152           # Bessen blauwe
+    aisle: diepvries
+    synonyms: [diepvries bosbessen, frozen blueberries]
+  diepvries kersen:
+    nevo: 163           # Kersen zoete
+    aisle: diepvries
+    synonyms: [frozen cherries]
+  diepvries mango:
+    nevo: 692           # Mango
+    aisle: diepvries
+    synonyms: [mangoblokjes, frozen mango]
+  diepvries ananas:
+    nevo: 150           # Ananas
+    aisle: diepvries
+    synonyms: [frozen pineapple]
 
   ### pantry ### 
   zout:
