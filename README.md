@@ -191,6 +191,35 @@ WantedBy=multi-user.target
 
 It stops cleanly on SIGTERM.
 
+### Docker
+
+The image holds only the binary (with the web app embedded). Your recipes
+and the NEVO data are not baked in: the library is a mounted folder and the
+database lives in a volume.
+
+```sh
+# set GROCERY_IMAGE in .env to <dockerhub-user>/grocery, then:
+docker login
+docker compose build && docker compose push
+# or for an arm64 server (e.g. a Pi) as well:
+docker buildx build --platform linux/amd64,linux/arm64 -t <user>/grocery:latest --push .
+
+# on the server: copy docker-compose.yml, .env and your library/ folder
+sudo chown -R 1000:1000 library            # the container runs as uid 1000
+docker compose up -d
+```
+
+Settings are in `.env` (image, port, bind address, library folder, `TZ`).
+The port is published on `127.0.0.1` by default because there is no login;
+see "Web app" for HTTPS via `tailscale serve`. Import NEVO into the volume
+once. To back up the database (it holds your lists and plans), stop the
+service so the WAL is flushed, then copy the file out:
+
+```sh
+docker compose run --rm --no-deps -v ~/Downloads/NEVO2025:/nevo:ro grocery import-nevo /nevo
+docker compose stop && docker compose cp grocery:/data/grocery.sqlite . && docker compose start
+```
+
 ## Web app
 
 `grocery serve` also serves the app at `/`. It's built into the binary:

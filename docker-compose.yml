@@ -1,0 +1,14 @@
+services:
+  grocery:
+    image: geurto/grocery
+    build: .
+    container_name: grocery
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - ./library:/library
+      - grocery-data:/data
+
+volumes:
+  grocery-data:
