@@ -8,8 +8,9 @@
 #   aisle:    section heading on the shopping list
 #   synonyms: other spellings / English names; matching is case-insensitive
 #
-# The name of each food (the key) is how it shows on shopping lists, so
-# those are in Dutch; recipes may use any of the synonyms.
+# Shopping lists show the name the recipe uses ("krieltjes"), so synonyms
+# never change what you buy. The key is the food's own name: it is what
+# hand-added items, the Foods page and merging use, so keep it Dutch.
 #
 # Weights below are rough household averages; adjust to what you buy.
 # NEVO values are per 100 g *edible part*, and recipes are weighed raw, so

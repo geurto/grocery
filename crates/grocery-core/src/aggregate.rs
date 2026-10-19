@@ -46,6 +46,10 @@ pub struct Source {
 pub struct Item {
     /// Canonical food name if resolved, otherwise the name as written.
     pub name: String,
+    /// The names recipes use for it ("krieltjes" for the food "kruimige
+    /// aardappelen"), one per distinct spelling. Empty for hand-added items
+    /// and lines saved before this existed.
+    pub written: Vec<String>,
     pub aisle: Option<String>,
     /// `None` for "to taste" / text-only amounts.
     pub quantity: Option<Qty>,
@@ -60,6 +64,32 @@ pub struct Item {
     /// Ticked off while shopping. Always `false` from [`build`]; the web
     /// service stores it.
     pub checked: bool,
+}
+
+impl Item {
+    /// What to print on the list: the name the recipe uses, not the food's
+    /// own name, so "krieltjes" stays "krieltjes". Two recipes that name the
+    /// same food differently get both.
+    pub fn shown(&self) -> String {
+        if self.written.is_empty() {
+            self.name.clone()
+        } else {
+            self.written.join(" / ")
+        }
+    }
+}
+
+/// Remember a spelling, unless the item has it already (or a plural of it).
+fn add_written(written: &mut Vec<String>, name: &str, db: &FoodDb) {
+    let name = normalize_name(name);
+    let key = |n: &str| {
+        db.resolve(n)
+            .map_or_else(|| n.to_owned(), |r| r.matched.to_owned())
+    };
+    let new = key(&name);
+    if !name.is_empty() && !written.iter().any(|w| key(w) == new) {
+        written.push(name);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -80,6 +110,7 @@ struct Acc<'a> {
     notes: Vec<String>,
     all_optional: bool,
     recipes: Vec<String>,
+    written: Vec<String>,
 }
 
 impl Acc<'_> {
@@ -182,6 +213,9 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
                 }
             });
             acc.all_optional &= ing.optional;
+            if resolved.is_some() {
+                add_written(&mut acc.written, &ing.name, db);
+            }
             if !acc.recipes.contains(&recipe.title) {
                 acc.recipes.push(recipe.title.clone());
             }
@@ -221,6 +255,7 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
         let known = acc.info.is_some();
         let make = |quantity: Option<Qty>, notes: Vec<String>| Item {
             name: acc.name.clone(),
+            written: acc.written.clone(),
             aisle: acc.aisle.clone(),
             quantity,
             notes,
@@ -296,13 +331,15 @@ pub fn sort_key(item: &Item, aisle_order: &[String]) -> (usize, String, String) 
     (rank, unlisted, item.name.to_lowercase())
 }
 
-/// An item someone typed in ("melk", "toilet paper"): the food's own name
-/// and aisle when `aliases.yaml` knows it, else as typed.
+/// An item someone typed in ("melk", "toilet paper"): the food and aisle
+/// when `aliases.yaml` knows it, else as typed. A known food keeps the word
+/// that was typed ("krieltjes"), so the list says what was meant.
 pub fn hand_item(name: &str, db: &FoodDb) -> Item {
     let name = name.trim();
     let resolved = db.resolve(name);
     Item {
         name: resolved.map_or_else(|| name.to_owned(), |r| r.canonical.to_owned()),
+        written: resolved.map(|_| normalize_name(name)).into_iter().collect(),
         aisle: resolved.and_then(|r| r.info.aisle.clone()),
         quantity: None,
         notes: vec![],
@@ -390,6 +427,16 @@ pub fn merge_into(items: &mut Vec<Item>, incoming: Vec<Item>, db: &FoodDb) -> Ve
                 item.recipes.push(r);
             }
         }
+        if !new.written.is_empty() {
+            // A line without spellings (hand-added, or saved earlier) was
+            // the food's own name.
+            if item.written.is_empty() {
+                item.written.push(item.name.clone());
+            }
+            for w in &new.written {
+                add_written(&mut item.written, w, db);
+            }
+        }
         item.known |= new.known;
         item.optional &= new.optional;
         if item.aisle.is_none() {
@@ -458,12 +505,14 @@ mod tests {
     }
 
     #[test]
-    fn hand_items_get_the_foods_name_and_aisle() {
+    fn hand_items_get_the_foods_identity_and_aisle() {
         let ui = hand_item(" Ui ", &db());
         assert_eq!(
             (ui.name.as_str(), ui.aisle.as_deref(), ui.known),
             ("onion", Some("groente"), true)
         );
+        // Shown as typed, not as the food is called.
+        assert_eq!(ui.shown(), "ui");
         let tp = hand_item("toilet paper", &db());
         assert_eq!(
             (tp.name.as_str(), tp.aisle, tp.known),
@@ -534,6 +583,40 @@ mod tests {
         }];
         assert!(merge_into(&mut items, incoming, &db).is_empty());
         assert_eq!(items.len(), 2);
+    }
+
+    #[test]
+    fn lists_show_the_name_the_recipe_uses() {
+        let db = db();
+        let sel = |r| Selection {
+            recipe: r,
+            servings: None,
+        };
+        let a = recipe(
+            "A",
+            None,
+            &[("ui", v(1.0, None)), ("salt", Amount::Unspecified)],
+        );
+        let b = recipe("B", None, &[("Onions", v(1.0, None)), ("ui", v(1.0, None))]);
+
+        let list = build(&[sel(&a)], &db, &Pantry::default());
+        let onion = &find(&list, "onion")[0];
+        assert_eq!(
+            (onion.name.as_str(), onion.shown().as_str()),
+            ("onion", "ui")
+        );
+        assert_eq!(find(&list, "salt")[0].shown(), "salt");
+
+        // Another spelling of the same food joins the line and is named too;
+        // plurals and repeats are not.
+        let list = build(&[sel(&a), sel(&b)], &db, &Pantry::default());
+        assert_eq!(find(&list, "onion")[0].shown(), "ui / onions");
+
+        // Into a list where the line is a hand-added "onion".
+        let mut items = vec![hand_item("onion", &db)];
+        let first = build(&[sel(&a)], &db, &Pantry::default());
+        merge_into(&mut items, first.items, &db);
+        assert_eq!(items[0].shown(), "onion / ui");
     }
 
     #[test]

@@ -55,7 +55,7 @@ fn fmt_num(v: f64) -> String {
 }
 
 fn item_text(item: &Item) -> String {
-    let mut s = item.name.clone();
+    let mut s = item.shown();
     if let Some(q) = &item.quantity {
         let _ = write!(s, " — {}", format_qty(q));
     }
@@ -413,6 +413,7 @@ mod tests {
     fn item(name: &str, aisle: Option<&str>, quantity: Option<Qty>) -> Item {
         Item {
             name: name.into(),
+            written: vec![],
             aisle: aisle.map(Into::into),
             quantity,
             notes: vec![],

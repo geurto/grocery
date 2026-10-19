@@ -68,6 +68,9 @@ struct AliasesFile {
 #[derive(Debug, Clone, Copy)]
 pub struct Resolved<'a> {
     pub canonical: &'a str,
+    /// The name or synonym that matched, normalized: "krieltjes" for
+    /// "Krieltjes", where `canonical` is the food it belongs to.
+    pub matched: &'a str,
     pub info: &'a FoodInfo,
 }
 
@@ -207,9 +210,13 @@ impl FoodDb {
             key.strip_suffix('s').map(str::to_owned),
         ];
         candidates.into_iter().flatten().find_map(|k| {
-            let canonical = self.index.get(&k)?;
+            let (matched, canonical) = self.index.get_key_value(&k)?;
             let (canonical, info) = self.foods.get_key_value(canonical)?;
-            Some(Resolved { canonical, info })
+            Some(Resolved {
+                canonical,
+                matched,
+                info,
+            })
         })
     }
 

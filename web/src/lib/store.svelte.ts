@@ -5,7 +5,7 @@
 import { api, HttpError, OfflineError } from './api';
 import { load, save } from './storage';
 import { applyOps, next, settle, type Op, type Outcome } from './sync';
-import { resolveFood } from './foods';
+import { normalize, resolveFood } from './foods';
 import type { Food, List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
 
 const RECIPE_CACHE_SIZE = 40;
@@ -206,7 +206,7 @@ class Store {
     if (!trimmed) return;
     // Negative and unique on this phone until the server assigns a real id.
     const temp = -(Date.now() * 100 + (this.#seq % 100));
-    // Show it as the server will: the food's own name, in its aisle.
+    // Show it as the server will: as typed, in the food's aisle.
     const food = resolveFood(this.foods, trimmed);
     this.#enqueue({
       seq: ++this.#seq,
@@ -214,7 +214,7 @@ class Store {
       list,
       temp,
       name: trimmed,
-      shown: food?.name,
+      shown: food ? normalize(trimmed) : undefined,
       aisle: food?.aisle ?? null,
     });
   }

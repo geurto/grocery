@@ -429,6 +429,15 @@ and `density` (g/ml), plus `nevo:` (or `custom:`, see above) for nutrition.
 Typos in field names and a synonym listed under two foods are errors, not
 silent misses.
 
+Synonyms decide which food a recipe line is (for grams, nutrition and
+merging amounts), not what the shopping list says: a list line shows the
+word the recipe uses, so "krieltjes" stays "krieltjes" even though it counts
+as `kruimige aardappelen`. If two recipes use different words for the same
+food they share one line, "winterpeen / wortel — 3". Hand-added items show
+what you typed, and the suggestions list reads "krieltjes (kruimige
+aardappelen)" so you can see which food it counts as. Lists saved before
+this show the food name.
+
 **Spoons and millilitres.** `el`, `tl`, `ml`, `dl`, `cup` … are fixed volumes
 (15 ml, 5 ml, …), so the only thing a food needs to turn them into grams is
 its `density`. `density: 1.15` for soy sauce means 1 el = 17 g. There is

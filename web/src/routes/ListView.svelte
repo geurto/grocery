@@ -313,11 +313,11 @@
     <ul class="suggestions card" aria-label="Foods">
       {#each suggestions as s (s.food.name)}
         <li>
-          <button class="pick" onclick={() => addNamed(s.food.name)}>
-            <span class="name">{s.food.name}</span>
-            <span class="small muted">
-              {s.matched !== s.food.name ? `${s.matched} · ` : ''}{s.food.aisle ?? 'no aisle'}
+          <button class="pick" onclick={() => addNamed(s.matched)}>
+            <span class="name">
+              {s.matched}{#if s.matched !== s.food.name}<span class="muted"> ({s.food.name})</span>{/if}
             </span>
+            <span class="small muted">{s.food.aisle ?? 'no aisle'}</span>
           </button>
           <button class="info" aria-label="Nutrition of {s.food.name}" onclick={() => (info = s.food.name)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>

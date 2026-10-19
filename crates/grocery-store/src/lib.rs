@@ -57,7 +57,7 @@ impl Error {
 /// v2 added the recipe index and shopping lists, v3 meal plans. Every table
 /// is `CREATE IF NOT EXISTS`, so opening an older database upgrades it in
 /// place.
-const SCHEMA_VERSION: i32 = 3;
+const SCHEMA_VERSION: i32 = 4;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS list_items (
     list     INTEGER NOT NULL REFERENCES lists(id) ON DELETE CASCADE,
     pos      INTEGER NOT NULL,
     name     TEXT NOT NULL,
+    written  TEXT NOT NULL DEFAULT '',  -- names recipes use for it, one per line
     aisle    TEXT,
     dim      TEXT,                 -- g | ml | pc | unit:<name>; NULL = no quantity
     value    REAL,
@@ -246,6 +247,12 @@ impl Store {
             )));
         }
         conn.execute_batch(SCHEMA)?;
+        if version > 0 && version < 4 {
+            // v4: list lines remember the names recipes gave them.
+            conn.execute_batch(
+                "ALTER TABLE list_items ADD COLUMN written TEXT NOT NULL DEFAULT ''",
+            )?;
+        }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(Self {
             conn,

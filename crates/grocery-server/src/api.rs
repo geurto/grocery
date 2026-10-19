@@ -674,7 +674,7 @@ impl From<StoredList> for ListJson {
                 .map(|i| ItemJson {
                     id: i.id,
                     quantity: i.item.quantity.as_ref().map(render::format_qty),
-                    name: i.item.name,
+                    name: i.item.shown(),
                     aisle: i.item.aisle,
                     notes: i.item.notes,
                     optional: i.item.optional,

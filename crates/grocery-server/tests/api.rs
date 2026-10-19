@@ -215,7 +215,11 @@ async fn shopping_list_lifecycle() {
         "nothing unmapped in the example"
     );
     let items = created["items"].as_array().unwrap();
-    let garlic = items.iter().find(|i| i["name"] == "garlic").unwrap();
+    // Each recipe's own word for it: the fixtures mix English and Dutch.
+    let garlic = items
+        .iter()
+        .find(|i| i["name"] == "garlic / knoflook")
+        .unwrap();
     assert_eq!(garlic["quantity"], "4 cloves");
     assert_eq!(garlic["aisle"], "groente & fruit");
 
@@ -247,7 +251,7 @@ async fn shopping_list_lifecycle() {
         md.starts_with("# Week 42\n\nFor: Pasta arrabbiata (2 servings), Shakshuka (2 servings)\n"),
         "{md}"
     );
-    assert!(md.contains("- [x] garlic — 4 cloves\n"), "{md}");
+    assert!(md.contains("- [x] garlic / knoflook — 4 cloves\n"), "{md}");
     assert!(md.contains("## Other\n\n- [ ] toilet paper\n"), "{md}");
 
     let (_, _, txt) = f
@@ -921,7 +925,7 @@ async fn lists_start_empty_and_grow() {
         .await;
     assert_eq!(status, StatusCode::CREATED);
     let (_, list) = f.json(Method::GET, &format!("/api/lists/{id}"), None).await;
-    assert_eq!(list["items"][0]["name"], "milk");
+    assert_eq!(list["items"][0]["name"], "melk");
     assert_eq!(list["items"][0]["aisle"], "zuivel & eieren");
 
     // Recipes merge in.
@@ -941,7 +945,7 @@ async fn lists_start_empty_and_grow() {
         .map(|i| i["name"].clone())
         .collect();
     assert!(
-        names.contains(&json!("spaghetti")) && names.contains(&json!("milk")),
+        names.contains(&json!("spaghetti")) && names.contains(&json!("melk")),
         "{names:?}"
     );
 

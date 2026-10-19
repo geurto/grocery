@@ -157,6 +157,10 @@ fn lists_grow_by_hand_and_by_recipe() {
     assert_eq!(list.sources.len(), 1);
     assert_eq!(list.sources[0].title, "Pasta arrabbiata");
     assert_eq!(list.items.len(), 2 + built.items.len());
+    // The names the recipe uses are kept with the line.
+    let ui = list.items.iter().find(|i| i.item.name == "onion").unwrap();
+    assert_eq!(ui.item.written, ["onion"]);
+    assert!(list.items.iter().any(|i| i.item.shown() == "spaghetti"));
     // Still in walking order, hand-added items without an aisle last.
     assert_eq!(list.items.last().unwrap().item.name, "toilet paper");
     let aisles: Vec<_> = list.items.iter().map(|i| i.item.aisle.clone()).collect();
@@ -290,4 +294,26 @@ fn lists_round_trip_and_tick_off() {
     assert!(store.delete_list(id).unwrap());
     assert!(store.list(id).unwrap().is_none());
     assert!(store.lists().unwrap().is_empty());
+}
+
+#[test]
+fn databases_from_before_recipe_names_still_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("old.sqlite");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE lists (id INTEGER PRIMARY KEY, title TEXT NOT NULL, created TEXT NOT NULL);
+             CREATE TABLE list_items (
+                id INTEGER PRIMARY KEY, list INTEGER NOT NULL, pos INTEGER NOT NULL,
+                name TEXT NOT NULL, aisle TEXT, dim TEXT, value REAL, label TEXT,
+                notes TEXT NOT NULL, optional INTEGER NOT NULL, recipes TEXT NOT NULL,
+                known INTEGER NOT NULL, checked INTEGER NOT NULL DEFAULT 0);
+             PRAGMA user_version = 3;",
+        )
+        .unwrap();
+    }
+    // Opening upgrades the table; the add-column must not fail or repeat.
+    Store::open(&path).unwrap();
+    Store::open(&path).unwrap();
 }

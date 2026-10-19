@@ -79,10 +79,10 @@ For: Pasta arrabbiata (2 servings), Shakshuka (2 servings)
 ## Groente & fruit
 
 - [ ] basil — a handful
-- [ ] coriander
-- [ ] garlic — 4 cloves
-- [ ] onion — 2
-- [ ] red bell pepper — 1
+- [ ] verse koriander
+- [ ] garlic / knoflook — 4 cloves
+- [ ] onion / ui — 2
+- [ ] rode paprika — 1
 
 ## Zuivel & eieren
 
@@ -103,11 +103,11 @@ For: Pasta arrabbiata (2 servings), Shakshuka (2 servings)
 
 ## Kruiden & specerijen
 
-- [ ] cumin — 5 ml
+- [ ] komijn — 5 ml
 
 ## Olie & azijn
 
-- [ ] olive oil — 38 ml
+- [ ] olive oil / olijfolie — 38 ml
 
 From the pantry (not listed): salt, chili flakes
 ";

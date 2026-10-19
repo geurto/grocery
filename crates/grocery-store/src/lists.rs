@@ -189,7 +189,8 @@ impl Store {
             .collect::<Result<_, _>>()?;
 
         let mut stmt = self.conn.prepare(
-            "SELECT id, name, aisle, dim, value, label, notes, optional, recipes, known, checked
+            "SELECT id, name, aisle, dim, value, label, notes, optional, recipes, known, checked,
+                    written
              FROM list_items WHERE list = ?1 ORDER BY pos, id",
         )?;
         let items = stmt
@@ -213,6 +214,7 @@ impl Store {
                     id: r.get(0)?,
                     item: Item {
                         name: r.get(1)?,
+                        written: split_lines(&r.get::<_, String>(11)?),
                         aisle: r.get(2)?,
                         quantity,
                         notes: split_lines(&r.get::<_, String>(6)?),
@@ -365,6 +367,7 @@ fn resort(conn: &rusqlite::Connection, list: i64, aisle_order: &[String]) -> Res
                 r.get(0)?,
                 Item {
                     name: r.get(1)?,
+                    written: vec![],
                     aisle: r.get(2)?,
                     quantity: None,
                     notes: vec![],
@@ -389,7 +392,7 @@ fn update_item(conn: &rusqlite::Connection, id: i64, item: &Item) -> Result<()> 
     let q = item.quantity.as_ref();
     conn.execute(
         "UPDATE list_items SET aisle = ?2, dim = ?3, value = ?4, label = ?5, notes = ?6,
-                optional = ?7, recipes = ?8, known = ?9, checked = ?10
+                optional = ?7, recipes = ?8, known = ?9, checked = ?10, written = ?11
          WHERE id = ?1",
         params![
             id,
@@ -401,7 +404,8 @@ fn update_item(conn: &rusqlite::Connection, id: i64, item: &Item) -> Result<()> 
             item.optional,
             join_lines(&item.recipes),
             item.known,
-            item.checked
+            item.checked,
+            join_lines(&item.written)
         ],
     )?;
     Ok(())
@@ -411,8 +415,9 @@ fn insert_item(conn: &rusqlite::Connection, list: i64, pos: i64, item: &Item) ->
     let q = item.quantity.as_ref();
     conn.execute(
         "INSERT INTO list_items
-         (list, pos, name, aisle, dim, value, label, notes, optional, recipes, known, checked)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+         (list, pos, name, aisle, dim, value, label, notes, optional, recipes, known, checked,
+          written)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
         params![
             list,
             pos,
@@ -425,7 +430,8 @@ fn insert_item(conn: &rusqlite::Connection, list: i64, pos: i64, item: &Item) ->
             item.optional,
             join_lines(&item.recipes),
             item.known,
-            item.checked
+            item.checked,
+            join_lines(&item.written)
         ],
     )?;
     Ok(conn.last_insert_rowid())
