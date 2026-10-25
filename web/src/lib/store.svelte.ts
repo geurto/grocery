@@ -6,7 +6,7 @@ import { api, HttpError, OfflineError, type NewItem } from './api';
 import { load, save } from './storage';
 import { applyOps, next, settle, type Op, type Outcome } from './sync';
 import { normalize, parseTyped, resolveFood } from './foods';
-import type { Food, List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
+import type { Food, Item, List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
 
 const RECIPE_CACHE_SIZE = 40;
 const RETRY_MS = 15_000;
@@ -207,8 +207,12 @@ class Store {
     if (!trimmed) return;
     // Negative and unique on this phone until the server assigns a real id.
     const temp = -(Date.now() * 100 + (this.#seq % 100));
-    // Show it as the server will: as typed, in the food's aisle.
+    // Show it as the server will: as typed, in the food's aisle, on the
+    // line of the same food when there is one.
     const food = resolveFood(this.foods, trimmed);
+    const sameFood = (i: Item) =>
+      food ? resolveFood(this.foods, i.name)?.name === food.name : normalize(i.name) === normalize(trimmed);
+    const into = this.list(list)?.items.find(sameFood)?.id;
     this.#enqueue({
       seq: ++this.#seq,
       kind: 'add',
@@ -216,6 +220,7 @@ class Store {
       temp,
       name: trimmed,
       ...(amount === undefined ? {} : { amount, unit }),
+      ...(into === undefined ? {} : { into }),
       shown: food ? normalize(trimmed) : undefined,
       aisle: food?.aisle ?? null,
     });
@@ -283,6 +288,19 @@ class Store {
   }
 
   // These need the server, so they don't work offline.
+
+  /** Take a recipe off a list: its share of every line. Needs the server. */
+  async removeRecipe(id: number, path: string) {
+    // Send pending changes first, so the server sees them.
+    await this.flush();
+    const list = await api.removeRecipe(id, path);
+    this.online = true;
+    this.#versions.set(id, (this.#versions.get(id) ?? 0) + 1);
+    this.details[id] = list;
+    save('details', this.details);
+    await this.refreshLists();
+    return list;
+  }
 
   /** Merge recipes into a list that exists. Needs the server. */
   async addRecipes(id: number, recipes: { path: string; servings?: number }[]) {

@@ -55,10 +55,11 @@ impl Error {
 }
 
 /// v2 added the recipe index and shopping lists, v3 meal plans, v4 the
-/// names recipes give list lines, v5 single foods in plans. Every table is
+/// names recipes give list lines, v5 single foods in plans, v6 the parts of
+/// a list line (which recipe needs how much). Every table is
 /// `CREATE IF NOT EXISTS` and added columns are added when missing, so
 /// opening an older database upgrades it in place.
-const SCHEMA_VERSION: i32 = 5;
+const SCHEMA_VERSION: i32 = 6;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -139,6 +140,19 @@ CREATE TABLE IF NOT EXISTS list_items (
     checked  INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS list_items_by_list ON list_items (list, pos);
+-- Who needs how much of a line. Lines from before v6 have none.
+CREATE TABLE IF NOT EXISTS list_item_parts (
+    item   INTEGER NOT NULL REFERENCES list_items(id) ON DELETE CASCADE,
+    pos    INTEGER NOT NULL,
+    kind   TEXT NOT NULL CHECK (kind IN ('recipe', 'hand', 'earlier')),
+    path   TEXT,               -- recipe: relative to Recipes/
+    titles TEXT NOT NULL,      -- recipe: its title; earlier: the line's recipes then
+    dim    TEXT,               -- as in list_items; NULL = no amount
+    value  REAL,
+    label  TEXT,
+    notes  TEXT NOT NULL,
+    PRIMARY KEY (item, pos)
+) WITHOUT ROWID;
 CREATE TABLE IF NOT EXISTS people (
     id   INTEGER PRIMARY KEY,
     name TEXT NOT NULL UNIQUE COLLATE NOCASE

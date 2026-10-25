@@ -84,6 +84,19 @@
     return () => void wakeLock.set(false);
   });
 
+  /** "Curry 6 · added by hand 8" */
+  function partsText(parts: NonNullable<Item['parts']>): string {
+    return parts
+      .map((p) =>
+        p.recipe === null
+          ? `added by hand ${p.quantity ?? '(no amount)'}`
+          : p.quantity
+            ? `${p.recipe} ${p.quantity}`
+            : p.recipe,
+      )
+      .join(' · ');
+  }
+
   function flash(message: string) {
     toast = message;
     setTimeout(() => (toast = null), 2500);
@@ -291,7 +304,9 @@
                     {#if item.optional}<span class="tag">optional</span>{/if}
                   </span>
                   {#if item.notes.length}<span class="notes small muted">{item.notes.join(', ')}</span>{/if}
-                  {#if item.recipes.length > 1 || (item.recipes.length === 1 && list.recipes.length > 1)}
+                  {#if item.parts && item.parts.length > 1}
+                    <span class="recipes small muted">{partsText(item.parts)}</span>
+                  {:else if item.recipes.length > 1 || (item.recipes.length === 1 && list.recipes.length > 1)}
                     <span class="recipes small muted">{item.recipes.join(' · ')}</span>
                   {/if}
                 </span>

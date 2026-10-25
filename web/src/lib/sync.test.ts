@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { applyOps, newItem, next, remap, settle, type Op, type Outcome, type SyncState } from './sync';
+import { applyOps, joined, newItem, next, remap, settle, type Op, type Outcome, type SyncState } from './sync';
 import type { List } from './types';
 
 function list(id = 1): List {
@@ -140,5 +140,35 @@ describe('next and settle', () => {
       ],
     };
     expect(() => settle(state, state.outbox[1], { ok: true })).toThrow();
+  });
+});
+
+describe('joining a line', () => {
+  it('adds up the same unit, and unticks', () => {
+    const view = applyOps({ ...list(), items: [{ ...newItem(10, 'limoen'), quantity: '2', checked: true }] }, [
+      { seq: 1, kind: 'add', list: 1, temp: -5, name: 'limoen', amount: 12, into: 10 },
+    ]);
+    expect(view.items.map((i) => [i.id, i.quantity, i.checked])).toEqual([[10, '14', false]]);
+  });
+
+  it('leaves amounts it can’t add for the server', () => {
+    expect(joined({ ...newItem(1, 'kaas'), quantity: '1.25 kg' }, 500, 'g').quantity).toBe('1.25 kg');
+    expect(joined({ ...newItem(1, 'kaas'), quantity: '250 g' }, 500, 'g').quantity).toBe('750 g');
+    expect(joined(newItem(1, 'kaas'), 500, 'g').quantity).toBe('500 g');
+  });
+
+  it('follows a line added offline to its real id', () => {
+    let state: SyncState = {
+      lists: { 1: list() },
+      outbox: [
+        { seq: 1, kind: 'add', list: 1, temp: -5, name: 'limoen', amount: 2 },
+        { seq: 2, kind: 'add', list: 1, temp: -6, name: 'limoen', amount: 12, into: -5 },
+      ],
+    };
+    state = settle(state, state.outbox[0], { ok: true, id: 42 });
+    expect(state.outbox[0]).toMatchObject({ temp: -6, into: 42 });
+    state = settle(state, state.outbox[0], { ok: true, id: 42 });
+    const limes = state.lists[1].items.filter((i) => i.name === 'limoen');
+    expect(limes.map((i) => [i.id, i.quantity])).toEqual([[42, '14']]);
   });
 });

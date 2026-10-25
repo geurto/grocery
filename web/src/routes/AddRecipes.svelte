@@ -7,12 +7,18 @@
   import { searchRecipes } from '../lib/recipes';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
-  import type { RecipeSummary } from '../lib/types';
+  import type { ListSource, RecipeSummary } from '../lib/types';
 
   /** The list the recipes go on. */
   let { id }: { id: number } = $props();
 
+  const UNDO_MS = 4000;
+
   let query = $state('');
+  /** Taken off, but not sent yet: undo is still possible. */
+  let removing = $state<ListSource | null>(null);
+  let removeTimer: ReturnType<typeof setTimeout> | undefined;
+  let removeError = $state<string | null>(null);
   let creating = $state(false);
   let error = $state<string | null>(null);
 
@@ -24,12 +30,45 @@
     });
   });
 
+  // Leaving the screen sends a removal that's still waiting for undo.
+  $effect(() => () => void commitRemoval());
+
   const list = $derived(store.list(id));
+  const onThisList = $derived(list?.recipes.filter((r) => r.path !== removing?.path) ?? []);
   /** Already on the list: shown, so you don't add a recipe twice by accident. */
   const onList = $derived(new Set(list?.recipes.map((r) => r.path) ?? []));
 
   const picked = $derived(new Set(draft.picks.map((p) => p.path)));
   const results = $derived(searchRecipes(store.recipes, query));
+
+  function remove(r: ListSource) {
+    void commitRemoval();
+    removeError = null;
+    removing = r;
+    removeTimer = setTimeout(() => void commitRemoval(), UNDO_MS);
+  }
+
+  function undoRemoval() {
+    clearTimeout(removeTimer);
+    removing = null;
+  }
+
+  async function commitRemoval() {
+    clearTimeout(removeTimer);
+    const r = removing;
+    if (!r) return;
+    removing = null;
+    try {
+      await store.removeRecipe(id, r.path);
+    } catch (e) {
+      removeError =
+        e instanceof OfflineError
+          ? `Couldn’t take ${r.title} off: removing recipes needs a connection to the server.`
+          : e instanceof Error
+            ? e.message
+            : String(e);
+    }
+  }
 
   function toggle(r: RecipeSummary) {
     if (picked.has(r.path)) {
@@ -65,6 +104,25 @@
 <Header title={list ? `Add to ${list.title}` : 'Add recipes'} back />
 
 <main>
+  {#if onThisList.length > 0 || removeError}
+    <section class="on-list">
+      <h2>On this list</h2>
+      {#if removeError}<p class="error small" role="alert">{removeError}</p>{/if}
+      {#if onThisList.length}
+        <ul class="card">
+          {#each onThisList as r (r.path)}
+            <li>
+              <a class="title" href={href({ name: 'recipe', path: r.path, servings: r.servings ?? undefined })}>{r.title}</a>
+              <span class="small muted">{r.servings ? `${r.servings} servings` : 'as written'}</span>
+              <button class="remove" aria-label="Take {r.title} off the list" onclick={() => remove(r)}>×</button>
+            </li>
+          {/each}
+        </ul>
+        <p class="small muted hint">Taking a recipe off removes what only it needed, and its share of the rest.</p>
+      {/if}
+    </section>
+  {/if}
+
   {#if draft.picks.length > 0}
     <section class="picked">
       <h2>Adding</h2>
@@ -138,6 +196,13 @@
   </section>
 </main>
 
+{#if removing}
+  <div class="toast" role="status">
+    <span>Took {removing.title} off the list</span>
+    <button onclick={undoRemoval}>Undo</button>
+  </div>
+{/if}
+
 <style>
   .already {
     color: var(--accent);
@@ -168,11 +233,41 @@
   li:first-child {
     border-top: 0;
   }
-  .picked li {
+  .picked li,
+  .on-list li {
     padding: 0.4rem 0.25rem 0.4rem 1rem;
     min-height: var(--tap);
   }
-  .picked .title {
+  .hint {
+    margin: -0.25rem 0.25rem 0;
+  }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: calc(1.5rem + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    background: var(--text);
+    color: var(--bg);
+    padding: 0.4rem 0.4rem 0.4rem 1rem;
+    border-radius: 999px;
+    font-size: 0.9rem;
+    z-index: 30;
+    max-width: calc(100vw - 2rem);
+  }
+  .toast button {
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-weight: 700;
+    min-height: 36px;
+    padding: 0 0.6rem;
+    filter: brightness(1.4);
+  }
+  .picked .title,
+  .on-list .title {
     flex: 1;
     font-weight: 600;
     color: inherit;

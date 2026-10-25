@@ -25,6 +25,8 @@ export type Op =
       /** How it shows until the server answers: the food's name and aisle if known here. */
       shown?: string;
       aisle?: string | null;
+      /** The line of the same food it will join, as far as this phone can tell. */
+      into?: number;
     }
   | { seq: number; kind: 'remove'; list: number; item: number };
 
@@ -58,7 +60,9 @@ export function applyOps(list: List, ops: readonly Op[]): List {
         items = items.map((i) => (i.id === op.item ? { ...i, checked: op.checked } : i));
         break;
       case 'add':
-        if (!items.some((i) => i.id === op.temp)) {
+        if (op.into !== undefined && items.some((i) => i.id === op.into)) {
+          items = items.map((i) => (i.id === op.into ? joined(i, op.amount, op.unit) : i));
+        } else if (!items.some((i) => i.id === op.temp)) {
           const quantity = op.amount === undefined ? null : amountText(op.amount, op.unit);
           items.push(newItem(op.temp, op.shown ?? op.name, op.aisle ?? null, quantity));
         }
@@ -76,11 +80,34 @@ export function applyOps(list: List, ops: readonly Op[]): List {
   };
 }
 
+/**
+ * A line with an amount added, as well as this phone can tell: the same unit
+ * adds up ("2" + 12 → "14"); anything else waits for the server to convert.
+ * More of something isn't in the basket yet, so it's unticked.
+ */
+export function joined(item: Item, amount: number | undefined, unit: string | undefined): Item {
+  if (amount === undefined) return item;
+  const m = item.quantity === null ? null : /^(\d+(?:\.\d+)?)(?: (.+))?$/.exec(item.quantity);
+  const quantity =
+    item.quantity === null
+      ? amountText(amount, unit)
+      : m && (m[2] ?? '') === (unit ?? '')
+        ? amountText(Number(m[1]) + amount, unit)
+        : item.quantity;
+  return { ...item, quantity, checked: false, parts: undefined };
+}
+
 /** Point ops at real ids once their temporary items reached the server. */
 export function remap(ops: readonly Op[], ids: ReadonlyMap<number, number>): Op[] {
   if (ids.size === 0) return ops.slice();
   return ops.map((op) =>
-    op.kind !== 'add' && ids.has(op.item) ? { ...op, item: ids.get(op.item)! } : op,
+    op.kind !== 'add'
+      ? ids.has(op.item)
+        ? { ...op, item: ids.get(op.item)! }
+        : op
+      : op.into !== undefined && ids.has(op.into)
+        ? { ...op, into: ids.get(op.into)! }
+        : op,
   );
 }
 
@@ -124,7 +151,8 @@ export function settle(state: SyncState, op: Op, outcome: Outcome): SyncState {
     let applied: Op = op;
     if (op.kind === 'add' && outcome.id !== undefined) {
       outbox = remap(outbox, new Map([[op.temp, outcome.id]]));
-      applied = { ...op, temp: outcome.id };
+      // Joined the expected line, or the server made a new one after all.
+      applied = { ...op, temp: outcome.id, into: outcome.id === op.into ? op.into : undefined };
     }
     const cached = lists[op.list];
     if (cached) lists[op.list] = applyOps(cached, [applied]);

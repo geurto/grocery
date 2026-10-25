@@ -75,6 +75,8 @@ export const api = {
     request<List>('POST', '/api/lists', { recipes, title, items }),
   addRecipes: (list: number, recipes: { path: string; servings?: number }[]) =>
     request<List>('POST', `/api/lists/${list}/recipes`, { recipes }),
+  removeRecipe: (list: number, path: string) =>
+    request<List>('DELETE', `/api/lists/${list}/recipes/${enc(path)}`),
   updateList: (id: number, change: { title?: string; status?: ListStatus }) =>
     request<void>('PATCH', `/api/lists/${id}`, change),
   deleteList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),

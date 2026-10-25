@@ -4,7 +4,9 @@
 //! Editing a recipe afterwards doesn't change a list someone is shopping
 //! with. Items can be ticked off, and extra items added by hand.
 
-use grocery_core::aggregate::{self, Item, Qty, ShoppingList, Source};
+use std::collections::HashMap;
+
+use grocery_core::aggregate::{self, Item, Part, PartSource, Qty, Removal, ShoppingList, Source};
 use grocery_core::food::FoodDb;
 use grocery_core::units::Dim;
 use rusqlite::{params, OptionalExtension};
@@ -188,6 +190,7 @@ impl Store {
             })?
             .collect::<Result<_, _>>()?;
 
+        let mut parts = read_parts(&self.conn, id)?;
         let mut stmt = self.conn.prepare(
             "SELECT id, name, aisle, dim, value, label, notes, optional, recipes, known, checked,
                     written
@@ -196,22 +199,10 @@ impl Store {
         let items = stmt
             .query_map([id], |r| {
                 let dim: Option<String> = r.get(3)?;
-                let quantity = match dim {
-                    Some(d) => Some(Qty {
-                        dim: dim_from_sql(&d).ok_or_else(|| {
-                            rusqlite::Error::FromSqlConversionFailure(
-                                3,
-                                rusqlite::types::Type::Text,
-                                format!("unknown dimension '{d}'").into(),
-                            )
-                        })?,
-                        value: r.get(4)?,
-                        label: r.get(5)?,
-                    }),
-                    None => None,
-                };
+                let quantity = qty_from_sql(dim, r.get(4)?, r.get(5)?)?;
+                let id: i64 = r.get(0)?;
                 Ok(StoredItem {
-                    id: r.get(0)?,
+                    id,
                     item: Item {
                         name: r.get(1)?,
                         written: split_lines(&r.get::<_, String>(11)?),
@@ -222,6 +213,7 @@ impl Store {
                         recipes: split_lines(&r.get::<_, String>(8)?),
                         known: r.get(9)?,
                         checked: r.get(10)?,
+                        parts: parts.remove(&id).unwrap_or_default(),
                     },
                 })
             })?
@@ -254,9 +246,11 @@ impl Store {
     }
 
     /// Add an item by hand ("toilet paper", "melk", "500 g kaas"). A name
-    /// `db` knows becomes that food, with its aisle; the list is re-sorted
-    /// so it lands in the right aisle. Returns the new item's id, or `None`
-    /// if there's no such list.
+    /// `db` knows becomes that food, with its aisle, and joins a line of the
+    /// same food when the amounts add up (see [`aggregate::merge_into`]);
+    /// the list is re-sorted so a new line lands in the right aisle.
+    /// Returns the id of the line it's on, or `None` if there's no such
+    /// list.
     pub fn add_item(
         &mut self,
         list: i64,
@@ -270,15 +264,24 @@ impl Store {
                 "item name must be one non-empty line".into(),
             ));
         }
-        let tx = self.conn.transaction()?;
-        if !list_exists(&tx, list)? {
+        let Some(current) = self.list(list)? else {
             return Ok(None);
-        }
-        let item = Item {
-            quantity,
-            ..aggregate::hand_item(name, db)
         };
-        let id = insert_item(&tx, list, i64::MAX, &item)?;
+        let ids: Vec<i64> = current.items.iter().map(|i| i.id).collect();
+        let mut items: Vec<Item> = current.items.into_iter().map(|i| i.item).collect();
+        let changed = aggregate::merge_into(
+            &mut items,
+            vec![aggregate::hand_amount(name, quantity, db)],
+            db,
+        );
+        let tx = self.conn.transaction()?;
+        let id = match changed.first() {
+            Some(&i) => {
+                update_item(&tx, ids[i], &items[i])?;
+                ids[i]
+            }
+            None => insert_item(&tx, list, i64::MAX, &items[ids.len()])?,
+        };
         resort(&tx, list, db.aisle_order())?;
         tx.commit()?;
         Ok(Some(id))
@@ -342,6 +345,49 @@ impl Store {
         Ok(true)
     }
 
+    /// Take a recipe off a list: its share comes off every line, and lines
+    /// nothing else needs go (see [`aggregate::remove_recipe`]). `legacy` is
+    /// what the recipe adds, for lines saved before parts were recorded.
+    /// Returns `false` if there's no such list, or the recipe isn't on it.
+    pub fn remove_recipe(
+        &mut self,
+        list: i64,
+        path: &str,
+        legacy: &[Item],
+        db: &FoodDb,
+    ) -> Result<bool> {
+        let Some(current) = self.list(list)? else {
+            return Ok(false);
+        };
+        let Some(source) = current
+            .sources
+            .iter()
+            .find(|s| s.path.to_string_lossy() == path)
+        else {
+            return Ok(false);
+        };
+        let ids: Vec<i64> = current.items.iter().map(|i| i.id).collect();
+        let mut items: Vec<Item> = current.items.iter().map(|i| i.item.clone()).collect();
+        let what = aggregate::remove_recipe(&mut items, path, &source.title, legacy, db);
+
+        let tx = self.conn.transaction()?;
+        for ((id, item), what) in ids.iter().zip(&items).zip(what) {
+            match what {
+                Removal::Same => {}
+                Removal::Changed => update_item(&tx, *id, item)?,
+                Removal::Gone => {
+                    tx.execute("DELETE FROM list_items WHERE id = ?1", [id])?;
+                }
+            }
+        }
+        tx.execute(
+            "DELETE FROM list_recipes WHERE list = ?1 AND path = ?2",
+            params![list, path],
+        )?;
+        tx.commit()?;
+        Ok(true)
+    }
+
     /// Tick an item on or off. Returns `false` if the item isn't on that list.
     pub fn set_checked(&self, list: i64, item: i64, checked: bool) -> Result<bool> {
         let changed = self.conn.execute(
@@ -358,14 +404,6 @@ impl Store {
         )?;
         Ok(changed > 0)
     }
-}
-
-fn list_exists(conn: &rusqlite::Connection, list: i64) -> Result<bool> {
-    Ok(conn.query_row(
-        "SELECT EXISTS (SELECT 1 FROM lists WHERE id = ?1)",
-        [list],
-        |r| r.get(0),
-    )?)
 }
 
 /// Put a list's items back in walking order (see [`aggregate::sort_key`]).
@@ -385,6 +423,7 @@ fn resort(conn: &rusqlite::Connection, list: i64, aisle_order: &[String]) -> Res
                     recipes: vec![],
                     known: false,
                     checked: false,
+                    parts: vec![],
                 },
             ))
         })?
@@ -418,7 +457,7 @@ fn update_item(conn: &rusqlite::Connection, id: i64, item: &Item) -> Result<()> 
             join_lines(&item.written)
         ],
     )?;
-    Ok(())
+    write_parts(conn, id, &item.parts)
 }
 
 fn insert_item(conn: &rusqlite::Connection, list: i64, pos: i64, item: &Item) -> Result<i64> {
@@ -444,5 +483,91 @@ fn insert_item(conn: &rusqlite::Connection, list: i64, pos: i64, item: &Item) ->
             join_lines(&item.written)
         ],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    write_parts(conn, id, &item.parts)?;
+    Ok(id)
+}
+
+fn qty_from_sql(
+    dim: Option<String>,
+    value: Option<f64>,
+    label: Option<String>,
+) -> rusqlite::Result<Option<Qty>> {
+    let Some(d) = dim else { return Ok(None) };
+    Ok(Some(Qty {
+        dim: dim_from_sql(&d).ok_or_else(|| {
+            rusqlite::Error::FromSqlConversionFailure(
+                3,
+                rusqlite::types::Type::Text,
+                format!("unknown dimension '{d}'").into(),
+            )
+        })?,
+        value: value.unwrap_or_default(),
+        label,
+    }))
+}
+
+fn write_parts(conn: &rusqlite::Connection, item: i64, parts: &[Part]) -> Result<()> {
+    conn.execute("DELETE FROM list_item_parts WHERE item = ?1", [item])?;
+    let mut ins = conn.prepare(
+        "INSERT INTO list_item_parts (item, pos, kind, path, titles, dim, value, label, notes)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+    )?;
+    for (pos, p) in parts.iter().enumerate() {
+        let (kind, path, titles) = match &p.source {
+            PartSource::Recipe { path, title } => ("recipe", Some(path.as_str()), title.clone()),
+            PartSource::Hand => ("hand", None, String::new()),
+            PartSource::Earlier { titles } => ("earlier", None, join_lines(titles)),
+        };
+        let q = p.quantity.as_ref();
+        ins.execute(params![
+            item,
+            pos as i64,
+            kind,
+            path,
+            titles,
+            q.map(|q| dim_to_sql(&q.dim)),
+            q.map(|q| q.value),
+            q.and_then(|q| q.label.clone()),
+            join_lines(&p.notes)
+        ])?;
+    }
+    Ok(())
+}
+
+/// Every line's parts on a list, by item id, in order.
+fn read_parts(conn: &rusqlite::Connection, list: i64) -> Result<HashMap<i64, Vec<Part>>> {
+    let mut stmt = conn.prepare(
+        "SELECT p.item, p.kind, p.path, p.titles, p.dim, p.value, p.label, p.notes
+         FROM list_item_parts p JOIN list_items i ON i.id = p.item
+         WHERE i.list = ?1 ORDER BY p.item, p.pos",
+    )?;
+    let rows = stmt.query_map([list], |r| {
+        let kind: String = r.get(1)?;
+        let titles: String = r.get(3)?;
+        let source = match kind.as_str() {
+            "recipe" => PartSource::Recipe {
+                path: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                title: titles,
+            },
+            "earlier" => PartSource::Earlier {
+                titles: split_lines(&titles),
+            },
+            _ => PartSource::Hand,
+        };
+        Ok((
+            r.get::<_, i64>(0)?,
+            Part {
+                source,
+                quantity: qty_from_sql(r.get(4)?, r.get(5)?, r.get(6)?)?,
+                notes: split_lines(&r.get::<_, String>(7)?),
+            },
+        ))
+    })?;
+    let mut out: HashMap<i64, Vec<Part>> = HashMap::new();
+    for row in rows {
+        let (item, part) = row?;
+        out.entry(item).or_default().push(part);
+    }
+    Ok(out)
 }

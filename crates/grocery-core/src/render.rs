@@ -421,6 +421,7 @@ mod tests {
             recipes: vec!["Pasta".into()],
             known: true,
             checked: false,
+            parts: vec![],
         }
     }
 

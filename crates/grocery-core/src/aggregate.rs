@@ -64,6 +64,118 @@ pub struct Item {
     /// Ticked off while shopping. Always `false` from [`build`]; the web
     /// service stores it.
     pub checked: bool,
+    /// Who needs how much of `quantity`: each recipe, and what was added by
+    /// hand. Empty for lines saved before parts were recorded.
+    pub parts: Vec<Part>,
+}
+
+/// One recipe's share of a list line, or an amount added by hand.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Part {
+    pub source: PartSource,
+    /// In its own unit; `None` for "to taste", a text amount, or an item
+    /// typed without an amount.
+    pub quantity: Option<Qty>,
+    /// Text amounts ("a handful") from this source.
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PartSource {
+    /// Path as in [`Source::path`].
+    Recipe {
+        path: String,
+        title: String,
+    },
+    Hand,
+    /// What the line held before parts were recorded, by the recipe titles
+    /// it had then (empty: added by hand).
+    Earlier {
+        titles: Vec<String>,
+    },
+}
+
+impl Part {
+    pub fn hand(quantity: Option<Qty>) -> Self {
+        Part {
+            source: PartSource::Hand,
+            quantity,
+            notes: vec![],
+        }
+    }
+}
+
+/// Add `part` to `parts`: to a part from the same source in the same unit
+/// when there is one.
+fn add_part(parts: &mut Vec<Part>, part: Part) {
+    let same = parts.iter_mut().find(|p| {
+        p.source == part.source
+            && match (&p.quantity, &part.quantity) {
+                (Some(a), Some(b)) => a.dim == b.dim,
+                (None, None) => true,
+                _ => false,
+            }
+    });
+    match same {
+        Some(p) => {
+            if let (Some(a), Some(b)) = (&mut p.quantity, &part.quantity) {
+                a.value += b.value;
+            }
+            for n in part.notes {
+                if !p.notes.contains(&n) {
+                    p.notes.push(n);
+                }
+            }
+        }
+        None => parts.push(part),
+    }
+}
+
+/// `q` in the unit of `like`: the same dimension, or by way of grams.
+pub fn convert(q: &Qty, like: &Qty, info: Option<&FoodInfo>) -> Option<f64> {
+    if q.dim == like.dim {
+        return Some(q.value);
+    }
+    let grams = |dim: &Dim, value: f64| {
+        FoodDb::grams(
+            info?,
+            &units::Normalized {
+                dim: dim.clone(),
+                value,
+            },
+        )
+    };
+    let per_unit = grams(&like.dim, 1.0).filter(|g| *g > 0.0)?;
+    Some(grams(&q.dim, q.value)? / per_unit)
+}
+
+/// A line's parts added up per source, each in the line's own unit where
+/// it converts: what the list shows under a line ("Curry 6 · added by
+/// hand 8").
+pub fn breakdown(item: &Item, db: &FoodDb) -> Vec<Part> {
+    let info = db.resolve(&item.name).map(|r| r.info);
+    let mut out: Vec<Part> = Vec::new();
+    for p in &item.parts {
+        let quantity = match (&p.quantity, &item.quantity) {
+            (Some(q), Some(line)) => Some(match convert(q, line, info) {
+                Some(value) => Qty {
+                    value,
+                    ..line.clone()
+                },
+                None => q.clone(),
+            }),
+            (q, _) => q.clone(),
+        };
+        add_part(
+            &mut out,
+            Part {
+                source: p.source.clone(),
+                quantity,
+                notes: p.notes.clone(),
+            },
+        );
+    }
+    out
 }
 
 impl Item {
@@ -124,6 +236,7 @@ struct Acc<'a> {
     all_optional: bool,
     recipes: Vec<String>,
     written: Vec<String>,
+    parts: Vec<Part>,
 }
 
 impl Acc<'_> {
@@ -233,18 +346,29 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
                 acc.recipes.push(recipe.title.clone());
             }
 
+            let mut part = Part {
+                source: PartSource::Recipe {
+                    path: recipe.path.to_string_lossy().into_owned(),
+                    title: recipe.title.clone(),
+                },
+                quantity: None,
+                notes: vec![],
+            };
             match ing.amount.scaled(factor) {
                 Amount::Unspecified => {}
                 Amount::Text(t) => {
                     if !acc.notes.contains(&t) {
-                        acc.notes.push(t);
+                        acc.notes.push(t.clone());
                     }
+                    part.notes.push(t);
                 }
                 Amount::Value { qty, unit, .. } => {
                     let q = Qty::of(qty, unit.as_deref());
-                    acc.add(q.dim, q.value, q.label);
+                    acc.add(q.dim.clone(), q.value, q.label.clone());
+                    part.quantity = Some(q);
                 }
             }
+            add_part(&mut acc.parts, part);
 
             if resolved.is_none() {
                 unmapped.insert(key);
@@ -265,7 +389,7 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
         }
         acc.merge_if_possible();
         let known = acc.info.is_some();
-        let make = |quantity: Option<Qty>, notes: Vec<String>| Item {
+        let make = |quantity: Option<Qty>, notes: Vec<String>, parts: Vec<Part>| Item {
             name: acc.name.clone(),
             written: acc.written.clone(),
             aisle: acc.aisle.clone(),
@@ -275,14 +399,30 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
             recipes: acc.recipes.clone(),
             known,
             checked: false,
+            parts,
         };
-        if acc.buckets.is_empty() {
-            items.push(make(None, acc.notes.clone()));
+        if acc.buckets.len() < 2 {
+            let quantity = acc.buckets.first().cloned();
+            items.push(make(quantity, acc.notes.clone(), acc.parts.clone()));
         } else {
-            // Text notes ride along on the first quantity line.
+            // Text notes (and parts without an amount) ride along on the
+            // first quantity line; amounts go with the line in their unit.
             let mut notes = Some(acc.notes.clone());
-            for b in &acc.buckets {
-                items.push(make(Some(b.clone()), notes.take().unwrap_or_default()));
+            for (i, b) in acc.buckets.iter().enumerate() {
+                let parts = acc
+                    .parts
+                    .iter()
+                    .filter(|p| match &p.quantity {
+                        Some(q) => q.dim == b.dim,
+                        None => i == 0,
+                    })
+                    .cloned()
+                    .collect();
+                items.push(make(
+                    Some(b.clone()),
+                    notes.take().unwrap_or_default(),
+                    parts,
+                ));
             }
         }
     }
@@ -359,6 +499,16 @@ pub fn hand_item(name: &str, db: &FoodDb) -> Item {
         recipes: vec![],
         known: resolved.is_some(),
         checked: false,
+        parts: vec![Part::hand(None)],
+    }
+}
+
+/// [`hand_item`] with an amount ("500 g kaas").
+pub fn hand_amount(name: &str, quantity: Option<Qty>, db: &FoodDb) -> Item {
+    Item {
+        quantity: quantity.clone(),
+        parts: vec![Part::hand(quantity)],
+        ..hand_item(name, db)
     }
 }
 
@@ -413,7 +563,23 @@ pub fn merge_into(items: &mut Vec<Item>, incoming: Vec<Item>, db: &FoodDb) -> Ve
             continue;
         };
         let item = &mut items[i];
+        if item.parts.is_empty() {
+            // Saved before parts were recorded: keep what it held as one.
+            item.parts.push(Part {
+                source: PartSource::Earlier {
+                    titles: item.recipes.clone(),
+                },
+                quantity: item.quantity.clone(),
+                notes: item.notes.clone(),
+            });
+        }
+        for p in new.parts {
+            add_part(&mut item.parts, p);
+        }
         let more = new.quantity.is_some();
+        // Typing it in doesn't rename a line that's there ("ui" stays
+        // "onion" when that's what the recipe says).
+        let typed = new.recipes.is_empty();
         item.quantity = match (item.quantity.take(), new.quantity) {
             (Some(a), Some(b)) if a.dim == b.dim => Some(Qty {
                 value: a.value + b.value,
@@ -439,7 +605,7 @@ pub fn merge_into(items: &mut Vec<Item>, incoming: Vec<Item>, db: &FoodDb) -> Ve
                 item.recipes.push(r);
             }
         }
-        if !new.written.is_empty() {
+        if !new.written.is_empty() && !typed {
             // A line without spellings (hand-added, or saved earlier) was
             // the food's own name.
             if item.written.is_empty() {
@@ -463,6 +629,111 @@ pub fn merge_into(items: &mut Vec<Item>, incoming: Vec<Item>, db: &FoodDb) -> Ve
     }
     changed.sort_unstable();
     changed
+}
+
+/// What [`remove_recipe`] did to a line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Removal {
+    Same,
+    Changed,
+    /// Nothing needs it any more: take it off the list.
+    Gone,
+}
+
+/// Take a recipe off a list's `items`: its parts are taken out of every
+/// line, a line nothing else needs is [`Removal::Gone`], and the others are
+/// added up again from what's left. Lines saved before parts were recorded
+/// don't know the recipe's share; for those, `legacy` (the recipe's own
+/// items at the amounts it was put on the list with) is subtracted instead.
+///
+/// Returns one [`Removal`] per item, in order; `items` keeps its length.
+pub fn remove_recipe(
+    items: &mut [Item],
+    path: &str,
+    title: &str,
+    legacy: &[Item],
+    db: &FoodDb,
+) -> Vec<Removal> {
+    let food_of = |name: &str| {
+        db.resolve(name)
+            .map_or_else(|| normalize_name(name), |r| r.canonical.to_owned())
+    };
+    let is_it = |p: &Part| matches!(&p.source, PartSource::Recipe { path: pp, .. } if pp == path);
+    items
+        .iter_mut()
+        .map(|item| {
+            let had_part = item.parts.iter().any(is_it);
+            let named = item.recipes.iter().any(|t| t == title);
+            if !had_part && !named {
+                return Removal::Same;
+            }
+            let info = db.resolve(&item.name).map(|r| r.info);
+            let food = food_of(&item.name);
+            let theirs: Vec<&Qty> = legacy
+                .iter()
+                .filter(|l| food_of(&l.name) == food)
+                .filter_map(|l| l.quantity.as_ref())
+                .collect();
+            // Its share of an amount it isn't a part of on its own.
+            let subtract = |q: &mut Option<Qty>| {
+                if let Some(line) = q {
+                    for t in &theirs {
+                        if let Some(v) = convert(t, line, info) {
+                            line.value -= v;
+                        }
+                    }
+                    if line.value <= 1e-6 {
+                        *q = None;
+                    }
+                }
+            };
+
+            item.recipes.retain(|t| t != title);
+            if item.parts.is_empty() {
+                // Saved before parts: all we know is the total.
+                if item.recipes.is_empty() {
+                    return Removal::Gone;
+                }
+                subtract(&mut item.quantity);
+                return Removal::Changed;
+            }
+            item.parts.retain(|p| !is_it(p));
+            item.parts.retain_mut(|p| {
+                let PartSource::Earlier { titles } = &mut p.source else {
+                    return true;
+                };
+                if !titles.iter().any(|t| t == title) {
+                    return true;
+                }
+                titles.retain(|t| t != title);
+                subtract(&mut p.quantity);
+                // Only its recipes held it, and they're all gone.
+                !(titles.is_empty() && p.quantity.is_none())
+            });
+            if item.parts.is_empty() {
+                return Removal::Gone;
+            }
+            if let Some(line) = &item.quantity {
+                let left: Vec<f64> = item
+                    .parts
+                    .iter()
+                    .filter_map(|p| p.quantity.as_ref())
+                    .filter_map(|q| convert(q, line, info))
+                    .collect();
+                item.quantity = (!left.is_empty()).then(|| Qty {
+                    value: left.iter().sum(),
+                    ..line.clone()
+                });
+            }
+            item.notes = Vec::new();
+            for n in item.parts.iter().flat_map(|p| &p.notes) {
+                if !item.notes.contains(n) {
+                    item.notes.push(n.clone());
+                }
+            }
+            Removal::Changed
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -894,5 +1165,161 @@ mod tests {
         );
         let names: Vec<_> = list.items.iter().map(|i| i.name.as_str()).collect();
         assert_eq!(names, ["onion", "spaghetti", "zucchini"]);
+    }
+
+    fn pantry() -> Pantry {
+        Pantry::default()
+    }
+
+    fn built(r: &Recipe) -> Vec<Item> {
+        build(
+            &[Selection {
+                recipe: r,
+                servings: None,
+            }],
+            &db(),
+            &pantry(),
+        )
+        .items
+    }
+
+    fn line<'a>(items: &'a [Item], name: &str) -> &'a Item {
+        items.iter().find(|i| i.name == name).unwrap()
+    }
+
+    /// (source, amount) per part, as shown under a line.
+    fn shown_parts(item: &Item) -> Vec<(String, Option<f64>)> {
+        breakdown(item, &db())
+            .into_iter()
+            .map(|p| {
+                let source = match p.source {
+                    PartSource::Recipe { title, .. } => title,
+                    PartSource::Hand => "hand".into(),
+                    PartSource::Earlier { titles } => format!("earlier {titles:?}"),
+                };
+                (source, p.quantity.map(|q| q.value))
+            })
+            .collect()
+    }
+
+    #[test]
+    fn hand_amounts_add_up_with_each_other_and_recipes() {
+        let db = db();
+        let curry = recipe("Curry", Some(2.0), &[("ui", v(6.0, None))]);
+        let mut items = built(&curry);
+        let two = hand_amount("Ui", Some(Qty::of(2.0, None)), &db);
+        let twelve = hand_amount("ui", Some(Qty::of(6.0, None)), &db);
+        merge_into(&mut items, vec![two], &db);
+        merge_into(&mut items, vec![twelve], &db);
+        assert_eq!(items.len(), 1);
+        let onion = line(&items, "onion");
+        assert_eq!(onion.quantity, qty(Dim::Count, 14.0));
+        assert_eq!(
+            shown_parts(onion),
+            [("Curry".into(), Some(6.0)), ("hand".into(), Some(8.0))]
+        );
+    }
+
+    #[test]
+    fn parts_in_other_units_show_in_the_lines_unit() {
+        let db = db();
+        let curry = recipe("Curry", Some(2.0), &[("onion", v(2.0, None))]);
+        let mut items = built(&curry);
+        merge_into(
+            &mut items,
+            vec![hand_amount("onion", Some(Qty::of(220.0, Some("g"))), &db)],
+            &db,
+        );
+        let onion = line(&items, "onion");
+        assert_eq!(onion.quantity, qty(Dim::Mass, 440.0));
+        assert_eq!(
+            shown_parts(onion),
+            [("Curry".into(), Some(220.0)), ("hand".into(), Some(220.0))]
+        );
+    }
+
+    #[test]
+    fn removing_a_recipe_takes_its_share_off() {
+        let db = db();
+        let curry = recipe(
+            "Curry",
+            Some(2.0),
+            &[("onion", v(6.0, None)), ("garlic", v(2.0, Some("cloves")))],
+        );
+        let soup = recipe("Soup", Some(2.0), &[("onion", v(1.0, None))]);
+        let mut items = built(&curry);
+        merge_into(&mut items, built(&soup), &db);
+        merge_into(
+            &mut items,
+            vec![
+                hand_amount("onion", Some(Qty::of(8.0, None)), &db),
+                hand_item("milk", &db),
+            ],
+            &db,
+        );
+        let path = curry.path.to_string_lossy().into_owned();
+        let what = remove_recipe(&mut items, &path, "Curry", &[], &db);
+        let names: Vec<_> = items.iter().map(|i| i.name.as_str()).collect();
+        let by_name: HashMap<_, _> = names.iter().zip(&what).collect();
+        assert_eq!(
+            by_name[&"garlic"],
+            &Removal::Gone,
+            "only the curry needed it"
+        );
+        assert_eq!(by_name[&"onion"], &Removal::Changed);
+        assert_eq!(by_name[&"milk"], &Removal::Same);
+        let onion = line(&items, "onion");
+        assert_eq!(onion.quantity, qty(Dim::Count, 9.0));
+        assert_eq!(onion.recipes, ["Soup"]);
+    }
+
+    #[test]
+    fn a_hand_line_without_amount_stays_without_one() {
+        let db = db();
+        let curry = recipe("Curry", Some(2.0), &[("onion", v(6.0, None))]);
+        let mut items = vec![hand_item("ui", &db)];
+        merge_into(&mut items, built(&curry), &db);
+        assert_eq!(items[0].quantity, qty(Dim::Count, 6.0));
+        let path = curry.path.to_string_lossy().into_owned();
+        assert_eq!(
+            remove_recipe(&mut items, &path, "Curry", &[], &db),
+            [Removal::Changed]
+        );
+        assert_eq!(
+            (items[0].quantity.as_ref(), items[0].recipes.len()),
+            (None, 0)
+        );
+    }
+
+    #[test]
+    fn lines_from_before_parts_subtract_the_recipe() {
+        let db = db();
+        let curry = recipe("Curry", Some(2.0), &[("onion", v(6.0, None))]);
+        let legacy = built(&curry);
+        let old = |recipes: &[&str], n: f64| Item {
+            quantity: qty(Dim::Count, n),
+            recipes: recipes.iter().map(|r| r.to_string()).collect(),
+            parts: vec![],
+            ..hand_item("onion", &db)
+        };
+        let path = curry.path.to_string_lossy().into_owned();
+
+        let mut items = vec![old(&["Curry"], 6.0), old(&["Curry", "Soup"], 10.0)];
+        let what = remove_recipe(&mut items, &path, "Curry", &legacy, &db);
+        assert_eq!(what, [Removal::Gone, Removal::Changed]);
+        assert_eq!(items[1].quantity, qty(Dim::Count, 4.0));
+
+        // An old line that later got an amount by hand.
+        let mut items = vec![old(&["Curry"], 6.0)];
+        merge_into(
+            &mut items,
+            vec![hand_amount("ui", Some(Qty::of(2.0, None)), &db)],
+            &db,
+        );
+        assert_eq!(items[0].quantity, qty(Dim::Count, 8.0));
+        let what = remove_recipe(&mut items, &path, "Curry", &legacy, &db);
+        assert_eq!(what, [Removal::Changed]);
+        assert_eq!(items[0].quantity, qty(Dim::Count, 2.0));
+        assert_eq!(shown_parts(&items[0]), [("hand".into(), Some(2.0))]);
     }
 }

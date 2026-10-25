@@ -22,6 +22,12 @@ export interface Item {
   optional: boolean;
   recipes: string[];
   checked: boolean;
+  /**
+   * Who needs how much ("Curry 6", by hand 8), in the line's unit. `recipe`
+   * null: added by hand. Missing or empty for older lines and items added
+   * offline.
+   */
+  parts?: { recipe: string | null; quantity: string | null }[];
 }
 
 export interface ListSource {

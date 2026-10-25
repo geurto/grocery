@@ -107,9 +107,11 @@ GET    /api/lists/{id}?format=                JSON, md (all items, ticked as [x]
                                               or txt (only what's left to buy)
 PATCH  /api/lists/{id}                        {"title"?, "status"?: "open" | "done"}
 DELETE /api/lists/{id}
-POST   /api/lists/{id}/items                  {"name": "toilet paper", "amount"?: 2, "unit"?: "pak"};
-                                              a known food gets its aisle ("melk" → milk)
+POST   /api/lists/{id}/items                  {"name": "limoen", "amount"?: 2, "unit"?}; a known
+                                              food gets its aisle ("melk" → milk), and an item
+                                              joins the line of the same food → {"id"} of the line
 POST   /api/lists/{id}/recipes                {"recipes": [{"path", "servings"?}]}: merged in
+DELETE /api/lists/{id}/recipes/{path}         its share comes off every line it's on
 PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 DELETE /api/lists/{id}/items/{item}
 GET    /api/people
@@ -252,7 +254,9 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
   or after the name ("500 g kaas", "2 bananen", "kaas 1 kg"); it stays when
   you pick a suggestion. A unit is only read as one when it's a known one
   (g, kg, ml, l, el, tl, stuks, blik, bos, zak, pak, …), so "2 bananen" is
-  two bananas.
+  two bananas. An item joins the line of the same food when the amounts add
+  up (2 limoen, then 12 limoen, on a list whose curry needs 6: one line of
+  20), and the line says who needs what: "Curry 6 · added by hand 14".
 - **+ Recipes** on a list (or **Add to a list…** on a recipe): their
   ingredients are merged into what's there. The same food adds up when the
   units allow it (2 onions + 220 g of onion becomes 440 g when the onion has
@@ -261,6 +265,12 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
   on the list counts it twice as many servings.
 - **Removing items**: **Edit** puts a remove button on every item (items
   added by hand always have one), with a few seconds to undo.
+- **Removing recipes**: **+ Recipes** lists the recipes on the list, each
+  with a remove button (and a few seconds to undo). What only that recipe
+  needed goes; lines others need too shrink by its share; ticked lines stay
+  ticked. A recipe added twice comes off as a whole. Lines saved before the
+  app kept track of who needs what (before schema v6) subtract what the
+  recipe says now, so an edit to the recipe since can leave a little behind.
 - **Recipes**: by folder (`Diner/`, `Ontbijt/`), searchable.
 - **New recipe / Edit**: fields for title, folder, servings, time and tags,
   and the method in Cooklang. Buttons insert `@ingredient{amount%unit}`,
@@ -355,7 +365,7 @@ override with `--db` or `GROCERY_DB`. It holds:
   with `sqlite3 grocery.sqlite ".backup backup.sqlite"` rather than `cp`
   while the service is running.
 
-An older database is upgraded in place the first time it's opened (v5 adds single foods to plans, v3 adds
+An older database is upgraded in place the first time it's opened (v6 records who needs how much of a list line, v5 adds single foods to plans, v3 adds
 the plan tables). Downgrading isn't supported: an older build refuses a
 newer database rather than guess.
 

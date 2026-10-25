@@ -9,15 +9,17 @@
 //! GET    /api/recipes/{path}?format=&servings=  one recipe; md/txt export
 //! GET    /api/nutrition/{path}?all=&optional=   per-serving report (text)
 //! GET    /api/lists                             newest first
-//! POST   /api/lists                             {"title"?, "recipes"?: [{"path", "servings"?}]}
-//!                                               (no recipes: an empty list to fill as you go)
+//! POST   /api/lists                             {"title"?, "recipes"?: [{"path", "servings"?}],
+//!                                                "items"?: [{"name", "amount"?, "unit"?}]}
+//!                                               (nothing: an empty list to fill as you go)
 //! GET    /api/lists/{id}?format=                md: all items, ticked as [x]
 //!                                               txt: only what's left to buy
 //! PATCH  /api/lists/{id}                        {"title"?, "status"?: "open" | "done"}
 //! DELETE /api/lists/{id}
-//! POST   /api/lists/{id}/items                  {"name": "toilet paper"}; a known food
-//!                                               gets its own name and aisle
+//! POST   /api/lists/{id}/items                  {"name": "limoen", "amount"?: 2, "unit"?}; a known
+//!                                               food gets its aisle and joins its line
 //! POST   /api/lists/{id}/recipes                {"recipes": [{"path", "servings"?}]}: merged in
+//! DELETE /api/lists/{id}/recipes/{path}         its share comes off every line
 //! PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 //! DELETE /api/lists/{id}/items/{item}
 //! POST   /api/recipe-check                      {"source"} → parse result, ingredients vs aliases.yaml
@@ -37,7 +39,9 @@
 //! DELETE /api/people/{id}                       and their plan
 //! GET    /api/plan?person=&from=&to=            entries, days as YYYY-MM-DD (inclusive)
 //! POST   /api/plan                              {"person", "day", "recipe", "meal"?, "portions"?}
+//!                                               or {"person", "day", "food", "amount"?, "unit"?, "meal"?}
 //! PATCH  /api/plan/{id}                         {"day"?, "meal"?: "dinner" | null, "portions"?}
+//!                                               (a food: {"amount", "unit"?})
 //! DELETE /api/plan/{id}
 //! GET    /api/plan/nutrition?person=&from=&to=  per-day totals, see `plans`
 //! ```
@@ -61,9 +65,10 @@ use axum::extract::{Path, Query, State};
 use axum::http::{header, StatusCode};
 use axum::response::sse::{self, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, patch, post};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
-use grocery_core::aggregate::{self, Selection};
+use grocery_core::aggregate::{self, PartSource, Selection};
+use grocery_core::food::FoodDb;
 use grocery_core::model::{self, Content, Recipe, Step, StepItem};
 use grocery_core::nutrition::Options;
 use grocery_core::render;
@@ -92,6 +97,7 @@ pub fn router(app: Shared) -> Router {
         )
         .route("/api/lists/{id}/items", post(add_item))
         .route("/api/lists/{id}/recipes", post(add_recipes))
+        .route("/api/lists/{id}/recipes/{*path}", delete(remove_recipe))
         .route("/api/recipe-check", post(edit::check))
         .route("/api/recipe-folders", get(edit::folders))
         .route("/api/recipe-files", post(edit::create_recipe))
@@ -653,10 +659,20 @@ struct ItemJson {
     optional: bool,
     recipes: Vec<String>,
     checked: bool,
+    /// Who needs how much, in the line's unit where it converts. Empty for
+    /// lines saved before this was recorded.
+    parts: Vec<PartJson>,
 }
 
-impl From<StoredList> for ListJson {
-    fn from(l: StoredList) -> Self {
+#[derive(Serialize)]
+struct PartJson {
+    /// The recipe's title; `null` for what was added by hand.
+    recipe: Option<String>,
+    quantity: Option<String>,
+}
+
+impl ListJson {
+    fn new(l: StoredList, db: &FoodDb) -> Self {
         Self {
             summary: l.summary.into(),
             recipes: l
@@ -672,6 +688,18 @@ impl From<StoredList> for ListJson {
                 .items
                 .into_iter()
                 .map(|i| ItemJson {
+                    parts: aggregate::breakdown(&i.item, db)
+                        .into_iter()
+                        .map(|p| PartJson {
+                            recipe: match p.source {
+                                PartSource::Recipe { title, .. } => Some(title),
+                                PartSource::Hand => None,
+                                PartSource::Earlier { titles } if titles.is_empty() => None,
+                                PartSource::Earlier { titles } => Some(titles.join(", ")),
+                            },
+                            quantity: p.quantity.as_ref().map(render::format_qty),
+                        })
+                        .collect(),
                     id: i.id,
                     quantity: i.item.quantity.as_ref().map(render::format_qty),
                     name: i.item.shown(),
@@ -733,10 +761,7 @@ async fn create_list(
                         "item name must be one non-empty line",
                     ));
                 }
-                extra.push(aggregate::Item {
-                    quantity: i.quantity()?,
-                    ..aggregate::hand_item(&i.name, &db)
-                });
+                extra.push(aggregate::hand_amount(&i.name, i.quantity()?, &db));
             }
             aggregate::merge_into(&mut built.items, extra, &db);
             aggregate::sort_items(&mut built.items, db.aisle_order());
@@ -758,7 +783,7 @@ async fn create_list(
         let stored = store
             .list(id)?
             .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
-        let mut json = ListJson::from(stored);
+        let mut json = ListJson::new(stored, &app.library.food_db()?);
         json.warnings = built.warnings;
         json.unmapped = built.unmapped;
         Ok((StatusCode::CREATED, Json(json)))
@@ -815,10 +840,61 @@ async fn add_recipes(
         let stored = store
             .list(id)?
             .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
-        let mut json = ListJson::from(stored);
+        let mut json = ListJson::new(stored, &app.library.food_db()?);
         json.warnings = built.warnings;
         json.unmapped = built.unmapped;
         Ok(Json(json))
+    })
+    .await
+}
+
+/// Take a recipe off a list: its share comes off every line it's on.
+async fn remove_recipe(
+    State(app): State<Shared>,
+    Path((id, path)): Path<(i64, String)>,
+) -> ApiResult<Json<ListJson>> {
+    blocking(&app, move |app| {
+        let db = app.library.food_db()?;
+        let list = app
+            .store()
+            .list(id)?
+            .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
+        let source = list
+            .sources
+            .iter()
+            .find(|s| s.path.to_string_lossy() == path)
+            .ok_or_else(|| ApiError::not_found(format!("recipe '{path}' on list {id}")))?;
+        // Lines saved before parts were recorded only have a total: what
+        // the recipe adds now, as many times as it was put on the list, is
+        // what comes off. A recipe that's gone or broken takes nothing off
+        // those.
+        let legacy = match load_recipe(app, &path) {
+            Ok((_, recipe)) => {
+                let mut items = aggregate::build(
+                    &[Selection {
+                        recipe: &recipe,
+                        servings: None,
+                    }],
+                    &db,
+                    &app.library.pantry()?,
+                )
+                .items;
+                for q in items.iter_mut().filter_map(|i| i.quantity.as_mut()) {
+                    q.value *= source.factor;
+                }
+                items
+            }
+            Err(_) => vec![],
+        };
+        let mut store = app.store();
+        if !store.remove_recipe(id, &path, &legacy, &db)? {
+            return Err(ApiError::not_found(format!("recipe '{path}' on list {id}")));
+        }
+        app.notify(Event::List { id });
+        let stored = store
+            .list(id)?
+            .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
+        Ok(Json(ListJson::new(stored, &db)))
     })
     .await
 }
@@ -840,7 +916,7 @@ async fn list(
             .list(id)?
             .ok_or_else(|| ApiError::not_found(format!("list {id}")))?;
         Ok(match query.format {
-            Format::Json => Json(ListJson::from(stored)).into_response(),
+            Format::Json => Json(ListJson::new(stored, &app.library.food_db()?)).into_response(),
             Format::Md => markdown(render::markdown(
                 &stored.shopping_list(),
                 &stored.summary.title,

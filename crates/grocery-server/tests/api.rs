@@ -1157,3 +1157,73 @@ async fn list_items_can_have_an_amount() {
         .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
 }
+
+#[tokio::test]
+async fn hand_amounts_merge_and_recipes_come_off_again() {
+    let f = Fixture::new();
+    let (_, list) = f
+        .json(
+            Method::POST,
+            "/api/lists",
+            Some(
+                json!({ "recipes": [{ "path": "Pasta arrabbiata.cook", "servings": 4 },
+                                     { "path": "Stamppot boerenkool.cook" }] }),
+            ),
+        )
+        .await;
+    let id = list["id"].as_i64().unwrap();
+    let item = |list: &Value, name: &str| {
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == name)
+            .cloned()
+    };
+    let items = format!("/api/lists/{id}/items");
+    let add = |name: &str, amount: Value| {
+        f.json(
+            Method::POST,
+            &items,
+            Some(json!({ "name": name, "amount": amount })),
+        )
+    };
+
+    // 2 + 6 onions typed in join the recipe's one: one line of 9.
+    let onion = item(&list, "onion").unwrap();
+    let (status, first) = add("ui", json!(2)).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert_eq!(first["id"], onion["id"], "joins the line that's there");
+    add("uien", json!(6)).await;
+    let (_, list) = f.json(Method::GET, &format!("/api/lists/{id}"), None).await;
+    let onion = item(&list, "onion").unwrap();
+    assert_eq!(onion["quantity"], "9", "{onion}");
+    assert_eq!(
+        onion["parts"],
+        json!([{ "recipe": "Pasta arrabbiata", "quantity": "1" },
+               { "recipe": null, "quantity": "8" }])
+    );
+
+    // The pasta comes off: its own lines go, the onion keeps what was typed.
+    let (status, list) = f
+        .json(
+            Method::DELETE,
+            &format!("/api/lists/{id}/recipes/Pasta%20arrabbiata.cook"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{list}");
+    assert_eq!(list["recipes"].as_array().unwrap().len(), 1);
+    assert!(item(&list, "spaghetti").is_none());
+    assert_eq!(item(&list, "onion").unwrap()["quantity"], "8");
+    assert!(item(&list, "melk").is_some(), "the stamppot stays");
+
+    let (status, _) = f
+        .json(
+            Method::DELETE,
+            &format!("/api/lists/{id}/recipes/Pasta%20arrabbiata.cook"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "not on the list any more");
+}
