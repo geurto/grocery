@@ -952,7 +952,7 @@ foods:
     aisle: ontbijt & bakproducten
     synonyms: [peanut butter]
   kokossuiker:
-    custom: kokossuiker 
+    custom: kokossuiker
     density: 0.7
     aisle: ontbijt & bakproducten
     synonyms: [kokosbloesemsuiker, coconut sugar]
@@ -962,7 +962,7 @@ foods:
     aisle: ontbijt & bakproducten
     synonyms: [rauwe cacao, cocoa powder]
   eiwitpoeder:
-    custom: eiwitpoeder 
+    custom: eiwitpoeder
     aisle: ontbijt & bakproducten
     synonyms: [proteïnepoeder, protein powder]
   ahornsiroop:
