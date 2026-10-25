@@ -4,6 +4,10 @@
 //!
 //! An entry keeps the recipe's title as well as its path, so a plan still
 //! reads sensibly after a recipe is renamed or removed.
+//!
+//! An entry can also be a single food from `aliases.yaml` with an amount
+//! ("a banana", "25 g cashews"): then `food` is set, `title` is the name as
+//! typed and `path` is empty.
 
 use chrono::NaiveDate;
 use rusqlite::{params, OptionalExtension, Row};
@@ -55,7 +59,18 @@ pub struct PlanEntry {
     pub path: String,
     pub title: String,
     /// Portions this person eats (servings as the recipe counts them).
+    /// Always 1 for a food: its amount says how much.
     pub portions: f64,
+    /// `Some` for a single food rather than a recipe.
+    pub food: Option<FoodAmount>,
+}
+
+/// How much of a single food: `25 g`, `1` (piece), `1 blik`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FoodAmount {
+    pub qty: f64,
+    /// As typed; `None` for pieces.
+    pub unit: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -63,9 +78,11 @@ pub struct NewEntry {
     pub person: i64,
     pub day: NaiveDate,
     pub meal: Option<Meal>,
+    /// Empty for a food.
     pub path: String,
     pub title: String,
     pub portions: f64,
+    pub food: Option<FoodAmount>,
 }
 
 /// A change to an entry; `None` fields stay as they are.
@@ -75,6 +92,8 @@ pub struct EntryChange {
     /// `Some(None)` clears the meal.
     pub meal: Option<Option<Meal>>,
     pub portions: Option<f64>,
+    /// Only for a food entry.
+    pub amount: Option<FoodAmount>,
 }
 
 pub fn parse_day(s: &str) -> Result<NaiveDate> {
@@ -92,6 +111,25 @@ fn check_portions(p: f64) -> Result<()> {
     }
 }
 
+/// Trims the unit; an empty one means pieces.
+fn check_amount(a: &FoodAmount) -> Result<FoodAmount> {
+    if !(a.qty.is_finite() && a.qty > 0.0 && a.qty <= 100_000.0) {
+        return Err(Error::Invalid(
+            "an amount must be more than 0 (and at most 100000)".into(),
+        ));
+    }
+    let unit = a.unit.as_deref().map(str::trim).filter(|u| !u.is_empty());
+    if unit.is_some_and(|u| u.contains('\n') || u.chars().count() > 20) {
+        return Err(Error::Invalid(
+            "a unit is one word of at most 20 characters".into(),
+        ));
+    }
+    Ok(FoodAmount {
+        qty: a.qty,
+        unit: unit.map(str::to_owned),
+    })
+}
+
 fn check_name(name: &str) -> Result<&str> {
     let name = name.trim();
     if name.is_empty() || name.contains('\n') || name.chars().count() > 40 {
@@ -102,11 +140,13 @@ fn check_name(name: &str) -> Result<&str> {
     Ok(name)
 }
 
-const ENTRY_COLUMNS: &str = "id, person, day, meal, path, title, portions";
+const ENTRY_COLUMNS: &str = "id, person, day, meal, path, title, portions, qty, unit";
 
 fn entry_from_row(r: &Row) -> rusqlite::Result<PlanEntry> {
     let day: String = r.get(2)?;
     let meal: Option<String> = r.get(3)?;
+    let qty: Option<f64> = r.get(7)?;
+    let unit: Option<String> = r.get(8)?;
     Ok(PlanEntry {
         id: r.get(0)?,
         person: r.get(1)?,
@@ -116,6 +156,7 @@ fn entry_from_row(r: &Row) -> rusqlite::Result<PlanEntry> {
         path: r.get(4)?,
         title: r.get(5)?,
         portions: r.get(6)?,
+        food: qty.map(|qty| FoodAmount { qty, unit }),
     })
 }
 
@@ -206,6 +247,7 @@ impl Store {
     /// `None` if there's no such person.
     pub fn add_plan_entry(&self, entry: &NewEntry) -> Result<Option<PlanEntry>> {
         check_portions(entry.portions)?;
+        let food = entry.food.as_ref().map(check_amount).transpose()?;
         let exists: bool = self.conn.query_row(
             "SELECT EXISTS (SELECT 1 FROM people WHERE id = ?1)",
             [entry.person],
@@ -215,8 +257,8 @@ impl Store {
             return Ok(None);
         }
         self.conn.execute(
-            "INSERT INTO plan_entries (person, day, meal, meal_order, path, title, portions)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO plan_entries (person, day, meal, meal_order, path, title, portions, qty, unit)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
                 entry.person,
                 entry.day.to_string(),
@@ -224,7 +266,9 @@ impl Store {
                 Meal::sort_key(entry.meal),
                 entry.path,
                 entry.title,
-                entry.portions
+                entry.portions,
+                food.as_ref().map(|f| f.qty),
+                food.as_ref().and_then(|f| f.unit.clone())
             ],
         )?;
         self.plan_entry(self.conn.last_insert_rowid())
@@ -239,6 +283,14 @@ impl Store {
             check_portions(p)?;
             entry.portions = p;
         }
+        if let Some(amount) = &change.amount {
+            if entry.food.is_none() {
+                return Err(Error::Invalid(
+                    "only a food has an amount; a recipe has portions".into(),
+                ));
+            }
+            entry.food = Some(check_amount(amount)?);
+        }
         if let Some(day) = change.day {
             entry.day = day;
         }
@@ -246,13 +298,17 @@ impl Store {
             entry.meal = meal;
         }
         self.conn.execute(
-            "UPDATE plan_entries SET day = ?2, meal = ?3, meal_order = ?4, portions = ?5 WHERE id = ?1",
+            "UPDATE plan_entries SET day = ?2, meal = ?3, meal_order = ?4, portions = ?5, qty = ?6,
+                    unit = ?7
+             WHERE id = ?1",
             params![
                 id,
                 entry.day.to_string(),
                 entry.meal.map(Meal::as_str),
                 Meal::sort_key(entry.meal),
-                entry.portions
+                entry.portions,
+                entry.food.as_ref().map(|f| f.qty),
+                entry.food.as_ref().and_then(|f| f.unit.clone())
             ],
         )?;
         Ok(Some(entry))
@@ -282,6 +338,7 @@ mod tests {
             path: format!("{title}.cook"),
             title: title.into(),
             portions: 1.0,
+            food: None,
         }
     }
 
@@ -363,6 +420,64 @@ mod tests {
                 id: me.id,
                 name: "P".into()
             }]
+        );
+    }
+
+    #[test]
+    fn foods_have_an_amount() {
+        let store = Store::open_in_memory().unwrap();
+        let me = store.add_person("Peter").unwrap();
+        let food = |qty: f64, unit: Option<&str>| NewEntry {
+            path: String::new(),
+            food: Some(FoodAmount {
+                qty,
+                unit: unit.map(str::to_owned),
+            }),
+            ..entry(me.id, "2026-10-14", Some(Meal::Snack), "cashewnoten")
+        };
+        let nuts = store
+            .add_plan_entry(&food(25.0, Some(" g ")))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            nuts.food,
+            Some(FoodAmount {
+                qty: 25.0,
+                unit: Some("g".into())
+            })
+        );
+        let banana = store.add_plan_entry(&food(1.0, Some(""))).unwrap().unwrap();
+        assert_eq!(banana.food.unwrap().unit, None, "no unit: pieces");
+        assert!(store.add_plan_entry(&food(0.0, None)).is_err());
+
+        let more = EntryChange {
+            amount: Some(FoodAmount {
+                qty: 40.0,
+                unit: Some("g".into()),
+            }),
+            ..Default::default()
+        };
+        let changed = store.update_plan_entry(nuts.id, &more).unwrap().unwrap();
+        assert_eq!(changed.food.unwrap().qty, 40.0);
+        assert_eq!(
+            store
+                .plan_entry(nuts.id)
+                .unwrap()
+                .unwrap()
+                .food
+                .unwrap()
+                .qty,
+            40.0
+        );
+
+        let curry = store
+            .add_plan_entry(&entry(me.id, "2026-10-14", None, "Curry"))
+            .unwrap()
+            .unwrap();
+        assert_eq!(curry.food, None);
+        assert!(
+            store.update_plan_entry(curry.id, &more).is_err(),
+            "a recipe has portions, not an amount"
         );
     }
 

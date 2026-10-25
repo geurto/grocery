@@ -1,5 +1,12 @@
 // Thin wrapper around the server's JSON API.
 
+/** An item typed in, optionally with an amount (`unit` missing = pieces). */
+export interface NewItem {
+  name: string;
+  amount?: number;
+  unit?: string;
+}
+
 import type {
   List,
   ListStatus,
@@ -64,15 +71,15 @@ export const api = {
   list: (id: number) => request<List>('GET', `/api/lists/${id}`),
   listText: (id: number, format: 'md' | 'txt') =>
     request<string>('GET', `/api/lists/${id}?format=${format}`),
-  createList: (recipes: { path: string; servings?: number }[], title?: string) =>
-    request<List>('POST', '/api/lists', { recipes, title }),
+  createList: (recipes: { path: string; servings?: number }[], title?: string, items: NewItem[] = []) =>
+    request<List>('POST', '/api/lists', { recipes, title, items }),
   addRecipes: (list: number, recipes: { path: string; servings?: number }[]) =>
     request<List>('POST', `/api/lists/${list}/recipes`, { recipes }),
   updateList: (id: number, change: { title?: string; status?: ListStatus }) =>
     request<void>('PATCH', `/api/lists/${id}`, change),
   deleteList: (id: number) => request<void>('DELETE', `/api/lists/${id}`),
-  addItem: (list: number, name: string) =>
-    request<{ id: number }>('POST', `/api/lists/${list}/items`, { name }),
+  addItem: (list: number, item: NewItem) =>
+    request<{ id: number }>('POST', `/api/lists/${list}/items`, item),
   setChecked: (list: number, item: number, checked: boolean) =>
     request<void>('PATCH', `/api/lists/${list}/items/${item}`, { checked }),
   removeItem: (list: number, item: number) =>
@@ -115,9 +122,16 @@ export const api = {
     request<PlanEntry[]>('GET', `/api/plan?person=${person}&from=${from}&to=${to}`),
   planNutrition: (person: number, from: string, to: string) =>
     request<PlanNutrition>('GET', `/api/plan/nutrition?person=${person}&from=${from}&to=${to}`),
-  addEntry: (entry: { person: number; day: string; meal: Meal | null; recipe: string; portions?: number }) =>
-    request<PlanEntry>('POST', '/api/plan', entry),
-  updateEntry: (id: number, change: { day?: string; meal?: Meal | null; portions?: number }) =>
+  addEntry: (
+    entry: { person: number; day: string; meal: Meal | null } & (
+      | { recipe: string; portions?: number }
+      | { food: string; amount: number; unit?: string }
+    ),
+  ) => request<PlanEntry>('POST', '/api/plan', entry),
+  updateEntry: (
+    id: number,
+    change: { day?: string; meal?: Meal | null; portions?: number; amount?: number; unit?: string },
+  ) =>
     request<PlanEntry>('PATCH', `/api/plan/${id}`, change),
   deleteEntry: (id: number) => request<void>('DELETE', `/api/plan/${id}`),
 };

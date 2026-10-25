@@ -704,6 +704,9 @@ struct NewList {
     /// May be empty: a list to fill as you go.
     #[serde(default)]
     recipes: Vec<NewListRecipe>,
+    /// Single foods (from a plan), merged with the recipes' items.
+    #[serde(default)]
+    items: Vec<NewItem>,
 }
 
 #[derive(Deserialize)]
@@ -720,7 +723,24 @@ async fn create_list(
         check_servings(r.servings)?;
     }
     blocking(&app, move |app| {
-        let built = build_from(app, &req.recipes)?;
+        let mut built = build_from(app, &req.recipes)?;
+        if !req.items.is_empty() {
+            let db = app.library.food_db()?;
+            let mut extra = Vec::new();
+            for i in &req.items {
+                if i.name.trim().is_empty() || i.name.contains('\n') {
+                    return Err(ApiError::bad_request(
+                        "item name must be one non-empty line",
+                    ));
+                }
+                extra.push(aggregate::Item {
+                    quantity: i.quantity()?,
+                    ..aggregate::hand_item(&i.name, &db)
+                });
+            }
+            aggregate::merge_into(&mut built.items, extra, &db);
+            aggregate::sort_items(&mut built.items, db.aisle_order());
+        }
 
         let now = chrono::Local::now();
         let title = req
@@ -878,9 +898,37 @@ async fn delete_list(State(app): State<Shared>, Path(id): Path<i64>) -> ApiResul
     .await
 }
 
+/// An item typed in: "kaas", optionally with an amount ("500" "g").
 #[derive(Deserialize)]
 struct NewItem {
     name: String,
+    amount: Option<f64>,
+    /// With `amount`; missing = pieces.
+    unit: Option<String>,
+}
+
+impl NewItem {
+    fn quantity(&self) -> ApiResult<Option<aggregate::Qty>> {
+        let Some(qty) = self.amount else {
+            return Ok(None);
+        };
+        if !(qty.is_finite() && qty > 0.0 && qty <= 100_000.0) {
+            return Err(ApiError::bad_request(
+                "an amount must be more than 0 (and at most 100000)",
+            ));
+        }
+        let unit = self
+            .unit
+            .as_deref()
+            .map(str::trim)
+            .filter(|u| !u.is_empty());
+        if unit.is_some_and(|u| u.contains('\n') || u.chars().count() > 20) {
+            return Err(ApiError::bad_request(
+                "a unit is one word of at most 20 characters",
+            ));
+        }
+        Ok(Some(aggregate::Qty::of(qty, unit)))
+    }
 }
 
 #[derive(Serialize)]
@@ -895,7 +943,7 @@ async fn add_item(
 ) -> ApiResult<(StatusCode, Json<Created>)> {
     blocking(&app, move |app| {
         let db = app.library.food_db()?;
-        match app.store().add_item(id, &req.name, &db)? {
+        match app.store().add_item(id, &req.name, req.quantity()?, &db)? {
             Some(item) => {
                 app.notify(Event::List { id });
                 Ok((StatusCode::CREATED, Json(Created { id: item })))

@@ -24,7 +24,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub use import::{read_nevo, NevoData};
 pub use lists::{ListStatus, ListSummary, StoredItem, StoredList};
-pub use plans::{EntryChange, Meal, NewEntry, Person, PlanEntry};
+pub use plans::{EntryChange, FoodAmount, Meal, NewEntry, Person, PlanEntry};
 pub use recipes::{IndexedRecipe, SyncReport};
 pub use search::{Candidate, Hit};
 
@@ -54,10 +54,11 @@ impl Error {
     }
 }
 
-/// v2 added the recipe index and shopping lists, v3 meal plans. Every table
-/// is `CREATE IF NOT EXISTS`, so opening an older database upgrades it in
-/// place.
-const SCHEMA_VERSION: i32 = 4;
+/// v2 added the recipe index and shopping lists, v3 meal plans, v4 the
+/// names recipes give list lines, v5 single foods in plans. Every table is
+/// `CREATE IF NOT EXISTS` and added columns are added when missing, so
+/// opening an older database upgrades it in place.
+const SCHEMA_VERSION: i32 = 5;
 
 const SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS meta (
@@ -150,7 +151,9 @@ CREATE TABLE IF NOT EXISTS plan_entries (
     meal_order INTEGER NOT NULL,   -- for sorting; no meal sorts last
     path       TEXT NOT NULL,      -- relative to Recipes/
     title      TEXT NOT NULL,
-    portions   REAL NOT NULL CHECK (portions > 0)
+    portions   REAL NOT NULL CHECK (portions > 0),
+    qty        REAL,               -- a single food: how much (path is '')
+    unit       TEXT                -- as typed; NULL = pieces
 );
 CREATE INDEX IF NOT EXISTS plan_entries_by_day ON plan_entries (person, day);
 ";
@@ -247,11 +250,23 @@ impl Store {
             )));
         }
         conn.execute_batch(SCHEMA)?;
-        if version > 0 && version < 4 {
+        // Tables created just now by SCHEMA have these already.
+        let added = [
             // v4: list lines remember the names recipes gave them.
-            conn.execute_batch(
-                "ALTER TABLE list_items ADD COLUMN written TEXT NOT NULL DEFAULT ''",
+            ("list_items", "written", "TEXT NOT NULL DEFAULT ''"),
+            // v5: single foods in plans.
+            ("plan_entries", "qty", "REAL"),
+            ("plan_entries", "unit", "TEXT"),
+        ];
+        for (table, column, decl) in added {
+            let exists: bool = conn.query_row(
+                "SELECT EXISTS (SELECT 1 FROM pragma_table_info(?1) WHERE name = ?2)",
+                [table, column],
+                |r| r.get(0),
             )?;
+            if !exists {
+                conn.execute_batch(&format!("ALTER TABLE {table} ADD COLUMN {column} {decl}"))?;
+            }
         }
         conn.pragma_update(None, "user_version", SCHEMA_VERSION)?;
         Ok(Self {

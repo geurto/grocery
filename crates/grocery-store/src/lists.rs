@@ -253,11 +253,17 @@ impl Store {
         Ok(self.conn.execute("DELETE FROM lists WHERE id = ?1", [id])? > 0)
     }
 
-    /// Add an item by hand ("toilet paper", "melk"). A name `db` knows
-    /// becomes that food, with its aisle; the list is re-sorted so it lands
-    /// in the right aisle. Returns the new item's id, or `None` if there's
-    /// no such list.
-    pub fn add_item(&mut self, list: i64, name: &str, db: &FoodDb) -> Result<Option<i64>> {
+    /// Add an item by hand ("toilet paper", "melk", "500 g kaas"). A name
+    /// `db` knows becomes that food, with its aisle; the list is re-sorted
+    /// so it lands in the right aisle. Returns the new item's id, or `None`
+    /// if there's no such list.
+    pub fn add_item(
+        &mut self,
+        list: i64,
+        name: &str,
+        quantity: Option<Qty>,
+        db: &FoodDb,
+    ) -> Result<Option<i64>> {
         let name = name.trim();
         if name.is_empty() || name.contains('\n') {
             return Err(Error::Invalid(
@@ -268,7 +274,11 @@ impl Store {
         if !list_exists(&tx, list)? {
             return Ok(None);
         }
-        let id = insert_item(&tx, list, i64::MAX, &aggregate::hand_item(name, db))?;
+        let item = Item {
+            quantity,
+            ..aggregate::hand_item(name, db)
+        };
+        let id = insert_item(&tx, list, i64::MAX, &item)?;
         resort(&tx, list, db.aisle_order())?;
         tx.commit()?;
         Ok(Some(id))

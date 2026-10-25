@@ -2,7 +2,8 @@
   import { untrack } from 'svelte';
   import Header from '../components/Header.svelte';
   import { parseDay, today, weekDays, weekLabel } from '../lib/dates';
-  import { plannedRecipes } from '../lib/plan';
+  import { amountText } from '../lib/foods';
+  import { plannedFoods, plannedRecipes } from '../lib/plan';
   import { planner } from '../lib/planner.svelte';
   import { router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
@@ -34,6 +35,7 @@
     planner.people.filter((p) => chosenPeople.has(p.id)).flatMap((p) => planner.entries(p.id, start) ?? []),
   );
   const planned = $derived(plannedRecipes(entries, chosenDays));
+  const foods = $derived(plannedFoods(entries, chosenDays));
   const servingsOf = (path: string) => store.recipes.find((r) => r.path === path)?.servings ?? null;
   const name = (id: number) => planner.people.find((p) => p.id === id)?.name ?? '?';
   const servingsText = (n: number) => `${fmt(n)} ${n === 1 ? 'serving' : 'servings'}`;
@@ -56,6 +58,7 @@
           servings: servingsOf(r.path) ? r.portions : undefined,
         })),
         `Plan ${weekLabel(start)}`,
+        foods.map((f) => ({ name: f.name, amount: f.amount, unit: f.unit ?? undefined })),
       );
       router.go({ name: 'list', id: list.id });
     } catch (e) {
@@ -95,8 +98,10 @@
 
   <section>
     <h2>To cook</h2>
-    {#if planned.length === 0}
+    {#if planned.length === 0 && foods.length === 0}
       <p class="empty">Nothing planned on these days.</p>
+    {:else if planned.length === 0}
+      <p class="small muted">No recipes on these days.</p>
     {:else}
       <ul class="card">
         {#each planned as r (r.path)}
@@ -117,8 +122,22 @@
     {/if}
   </section>
 
+  {#if foods.length}
+    <section>
+      <h2>And to eat as it is</h2>
+      <ul class="card">
+        {#each foods as f (`${f.name}|${f.unit}`)}
+          <li class="food">
+            <span class="title">{f.name}</span>
+            <span class="qty">{amountText(f.amount, f.unit)}</span>
+          </li>
+        {/each}
+      </ul>
+    </section>
+  {/if}
+
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <button class="btn primary create" onclick={create} disabled={creating || planned.length === 0}>
+  <button class="btn primary create" onclick={create} disabled={creating || (planned.length === 0 && foods.length === 0)}>
     {creating ? 'Making the list…' : 'Make shopping list'}
   </button>
 </main>
@@ -166,6 +185,15 @@
   }
   .title {
     font-weight: 600;
+  }
+  .food {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .qty {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
   }
   .error {
     color: var(--danger);

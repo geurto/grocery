@@ -1,7 +1,9 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import AmountSheet from '../components/AmountSheet.svelte';
   import Header from '../components/Header.svelte';
   import { longDay } from '../lib/dates';
+  import { amountText, parseTyped, suggestFoods, type Suggestion } from '../lib/foods';
   import { MEALS, planner } from '../lib/planner.svelte';
   import { byFolder, searchRecipes } from '../lib/recipes';
   import { router } from '../lib/router.svelte';
@@ -14,11 +16,20 @@
   let busy = $state(false);
   let error = $state<string | null>(null);
 
+  /** A food picked, to say how much of. */
+  let picked = $state<Suggestion | null>(null);
+
   $effect(() => {
-    untrack(() => void store.refreshRecipes());
+    untrack(() => {
+      void store.refreshRecipes();
+      void store.refreshFoods();
+    });
   });
 
   const groups = $derived(byFolder(searchRecipes(store.recipes, query)));
+  // "25 g cashews" searches for cashews, and keeps the 25 g for the sheet.
+  const typed = $derived(parseTyped(query));
+  const foods = $derived(suggestFoods(store.foods, typed.name, 4));
   const mealLabel = $derived(MEALS.find((m) => m.meal === meal)?.label);
 
   async function pick(r: RecipeSummary) {
@@ -35,14 +46,51 @@
       busy = false;
     }
   }
+
+  async function addFood(name: string, amount: number, unit: string) {
+    const person = planner.person;
+    if (!person) return;
+    error = null;
+    try {
+      await planner.addFood(person.id, day, meal, name, amount, unit);
+      router.back();
+    } catch (e) {
+      picked = null;
+      error = e instanceof Error ? e.message : String(e);
+    }
+  }
 </script>
 
 <Header title={mealLabel ? `Add to ${mealLabel.toLowerCase()}` : 'Add to plan'} back />
 
 <main>
-  <p class="muted small for">{planner.person?.name} · {longDay(day)} · one portion; change it on the plan.</p>
-  <input class="field search" type="search" bind:value={query} placeholder="Search title, tag or ingredient" aria-label="Search recipes" />
+  <p class="muted small for">{planner.person?.name} · {longDay(day)} · a recipe is one portion; change it on the plan.</p>
+  <input
+    class="field search"
+    type="search"
+    bind:value={query}
+    placeholder="A recipe, or a food (“25 g cashews”)"
+    aria-label="Search recipes and foods"
+  />
   {#if error}<p class="error" role="alert">{error}</p>{/if}
+  {#if foods.length}
+    <section>
+      <h2>Foods</h2>
+      <ul class="card">
+        {#each foods as s (s.food.name)}
+          <li>
+            <button onclick={() => (picked = s)} disabled={busy}>
+              <span class="title">{s.matched}{#if s.matched !== s.food.name}<span class="muted"> ({s.food.name})</span>{/if}</span>
+              <span class="small muted">
+                {typed.amount !== undefined ? `${amountText(typed.amount, typed.unit)} · ` : ''}single food
+              </span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    </section>
+    {#if groups.length}<h2 class="recipes">Recipes</h2>{/if}
+  {/if}
   {#each groups as group (group.folder)}
     <section>
       {#if group.folder}<h2>{group.folder}</h2>{/if}
@@ -60,6 +108,18 @@
   {/each}
 </main>
 
+{#if picked}
+  <AmountSheet
+    title="How much?"
+    name={picked.matched}
+    food={picked.food}
+    amount={typed.amount}
+    unit={typed.amount !== undefined ? (typed.unit ?? '') : undefined}
+    onsave={(amount, unit) => addFood(picked!.matched, amount, unit)}
+    onclose={() => (picked = null)}
+  />
+{/if}
+
 <style>
   .for {
     margin: 0 0.25rem 0.75rem;
@@ -72,6 +132,9 @@
   }
   section {
     margin-bottom: 1.25rem;
+  }
+  .recipes {
+    margin-top: 0.5rem;
   }
   h2 {
     font-size: 0.8rem;

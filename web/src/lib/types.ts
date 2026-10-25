@@ -104,9 +104,13 @@ export interface PlanEntry {
   /** YYYY-MM-DD */
   day: string;
   meal: Meal | null;
+  /** Empty for a single food. */
   path: string;
+  /** For a food: its name as typed. */
   title: string;
   portions: number;
+  /** A single food from the food list, with how much ("25 g", "1"). */
+  food?: { qty: number; unit: string | null; text: string } | null;
 }
 
 export interface NutrientRow {

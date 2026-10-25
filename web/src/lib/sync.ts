@@ -8,6 +8,7 @@
 //
 // Pure functions only; `store.svelte.ts` does the I/O.
 
+import { amountText } from './foods';
 import type { Item, List } from './types';
 
 export type Op =
@@ -17,8 +18,10 @@ export type Op =
       kind: 'add';
       list: number;
       temp: number;
-      /** As typed; the server resolves it to a food. */
+      /** As typed, without the amount; the server resolves it to a food. */
       name: string;
+      amount?: number;
+      unit?: string;
       /** How it shows until the server answers: the food's name and aisle if known here. */
       shown?: string;
       aisle?: string | null;
@@ -31,12 +34,12 @@ export type Outcome =
   | { ok: false; retry: true } // offline or server trouble: keep it, try later
   | { ok: false; retry: false }; // refused or gone (list deleted): drop it
 
-export function newItem(id: number, name: string, aisle: string | null = null): Item {
+export function newItem(id: number, name: string, aisle: string | null = null, quantity: string | null = null): Item {
   return {
     id,
     name,
     aisle,
-    quantity: null,
+    quantity,
     notes: [],
     optional: false,
     recipes: [],
@@ -55,7 +58,10 @@ export function applyOps(list: List, ops: readonly Op[]): List {
         items = items.map((i) => (i.id === op.item ? { ...i, checked: op.checked } : i));
         break;
       case 'add':
-        if (!items.some((i) => i.id === op.temp)) items.push(newItem(op.temp, op.shown ?? op.name, op.aisle ?? null));
+        if (!items.some((i) => i.id === op.temp)) {
+          const quantity = op.amount === undefined ? null : amountText(op.amount, op.unit);
+          items.push(newItem(op.temp, op.shown ?? op.name, op.aisle ?? null, quantity));
+        }
         break;
       case 'remove':
         items = items.filter((i) => i.id !== op.item);

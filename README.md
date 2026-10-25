@@ -100,14 +100,15 @@ GET    /api/recipes?q=boerenkool              search title, tags, ingredients
 GET    /api/recipes/{path}?format=&servings=  one recipe (JSON), or md/txt export
 GET    /api/nutrition/{path}?all=&optional=   per-serving report (text)
 GET    /api/lists                             newest first
-POST   /api/lists                             {"title"?, "recipes"?: [{"path", "servings"?}]}
-                                              (no recipes: an empty list to fill as you go)
+POST   /api/lists                             {"title"?, "recipes"?: [{"path", "servings"?}],
+                                               "items"?: [{"name", "amount"?, "unit"?}]}
+                                              (nothing: an empty list to fill as you go)
 GET    /api/lists/{id}?format=                JSON, md (all items, ticked as [x]),
                                               or txt (only what's left to buy)
 PATCH  /api/lists/{id}                        {"title"?, "status"?: "open" | "done"}
 DELETE /api/lists/{id}
-POST   /api/lists/{id}/items                  {"name": "toilet paper"}; a known food gets
-                                              its own name and aisle ("melk" → milk)
+POST   /api/lists/{id}/items                  {"name": "toilet paper", "amount"?: 2, "unit"?: "pak"};
+                                              a known food gets its aisle ("melk" → milk)
 POST   /api/lists/{id}/recipes                {"recipes": [{"path", "servings"?}]}: merged in
 PATCH  /api/lists/{id}/items/{item}           {"checked": true}
 DELETE /api/lists/{id}/items/{item}
@@ -117,7 +118,10 @@ PATCH  /api/people/{id}                       {"name": "Sam"}
 DELETE /api/people/{id}                       and their plan
 GET    /api/plan?person=&from=&to=            entries; days as YYYY-MM-DD, inclusive
 POST   /api/plan                              {"person", "day", "recipe", "meal"?, "portions"?}
+                                              or a food: {"person", "day", "food": "banaan",
+                                               "amount"?: 1, "unit"?: "g", "meal"?}
 PATCH  /api/plan/{id}                         {"day"?, "meal"?: "dinner" | null, "portions"?}
+                                              (a food: {"amount", "unit"?} instead of portions)
 DELETE /api/plan/{id}
 GET    /api/plan/nutrition?person=&from=&to=  per-day totals (JSON, with the NEVO citation)
 ```
@@ -244,7 +248,11 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
 - **Adding items**: type and pick from your foods as you type (name or any
   synonym: "ui" offers onion); a known food lands in its aisle under its own
   name, also offline. ⓘ next to a suggestion shows its nutrition per 100 g.
-  Anything else ("toilet paper") goes under Other.
+  Anything else ("toilet paper") goes under Other. An amount can go before
+  or after the name ("500 g kaas", "2 bananen", "kaas 1 kg"); it stays when
+  you pick a suggestion. A unit is only read as one when it's a known one
+  (g, kg, ml, l, el, tl, stuks, blik, bos, zak, pak, …), so "2 bananen" is
+  two bananas.
 - **+ Recipes** on a list (or **Add to a list…** on a recipe): their
   ingredients are merged into what's there. The same food adds up when the
   units allow it (2 onions + 220 g of onion becomes 440 g when the onion has
@@ -287,7 +295,10 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
   back ("Continue cooking").
 - **Plan**: one plan per person, so each sees their own calories. Per day:
   recipes by meal, with portions in halves (a portion is one of the
-  recipe's servings). Below that, the day's energy, macros, salt, and
+  recipe's servings), and single foods from your food list with an amount
+  ("a banana", "25 g cashews": search for the food under **+ Add**). A food
+  counts only when its amount can be weighed (grams, or pieces of a food
+  with a piece weight); otherwise it says why. Below that, the day's energy, macros, salt, and
   (folded) vitamins and minerals as amounts and % of the EU reference
   intakes, with the same honesty as the recipe report: `*` marks a lower
   bound and says which foods have no value; recipes without `servings`
@@ -295,7 +306,8 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
   strip shows each day's kcal. **Shopping list for this week** sums
   everyone's portions per recipe for the days you pick, so two people eating
   a curry, or one person eating the leftovers tomorrow, both buy for two
-  servings.
+  servings. Planned single foods go on the list too, merged with what the
+  recipes need.
 
 **Shopping together.** Both phones stay connected to `/api/events`, so a
 tick on one shows on the other within a second. Ticks set "checked" or
@@ -343,7 +355,7 @@ override with `--db` or `GROCERY_DB`. It holds:
   with `sqlite3 grocery.sqlite ".backup backup.sqlite"` rather than `cp`
   while the service is running.
 
-An older database is upgraded in place the first time it's opened (v3 adds
+An older database is upgraded in place the first time it's opened (v5 adds single foods to plans, v3 adds
 the plan tables). Downgrading isn't supported: an older build refuses a
 newer database rather than guess.
 

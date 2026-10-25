@@ -1,9 +1,11 @@
 <script lang="ts">
   import { untrack } from 'svelte';
+  import AmountSheet from '../components/AmountSheet.svelte';
   import DayNutrition from '../components/DayNutrition.svelte';
   import Header from '../components/Header.svelte';
   import Stepper from '../components/Stepper.svelte';
   import { addDays, longDay, parseDay, today, weekDays, weekLabel, weekStart } from '../lib/dates';
+  import { resolveFood } from '../lib/foods';
   import { MEALS, planner } from '../lib/planner.svelte';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
@@ -23,9 +25,14 @@
   let newName = $state('');
   let adding = $state(false);
   let error = $state<string | null>(null);
+  /** A planned food whose amount is being changed. */
+  let editing = $state<PlanEntry | null>(null);
 
   $effect(() => {
-    untrack(() => void planner.refreshPeople());
+    untrack(() => {
+      void planner.refreshPeople();
+      void store.refreshFoods();
+    });
   });
 
   $effect(() => {
@@ -124,7 +131,11 @@
                 {@const n = entryNutrition(e)}
                 <li>
                   <div class="entry">
-                    <a class="title" href={href({ name: 'recipe', path: e.path })}>{e.title}</a>
+                    {#if e.food}
+                      <span class="title">{e.title}</span>
+                    {:else}
+                      <a class="title" href={href({ name: 'recipe', path: e.path })}>{e.title}</a>
+                    {/if}
                     <span class="small muted">
                       {#if n?.problem}<span class="warn">Not counted: {n.problem}</span>
                       {:else if n?.kcal != null}{Math.round(n.kcal)} kcal{n.kcal_lower_bound ? '*' : ''}
@@ -134,14 +145,20 @@
                       {/if}
                     </span>
                   </div>
-                  <Stepper
-                    value={e.portions}
-                    min={0.5}
-                    max={20}
-                    step={0.5}
-                    label="portions"
-                    onchange={(v) => act(() => planner.setPortions(e, v))}
-                  />
+                  {#if e.food}
+                    <button class="btn amount" onclick={() => (editing = e)} aria-label="Change how much {e.title}">
+                      {e.food.text}
+                    </button>
+                  {:else}
+                    <Stepper
+                      value={e.portions}
+                      min={0.5}
+                      max={20}
+                      step={0.5}
+                      label="portions"
+                      onchange={(v) => act(() => planner.setPortions(e, v))}
+                    />
+                  {/if}
                   <button class="remove" onclick={() => act(() => planner.remove(e))} aria-label="Remove {e.title}">×</button>
                 </li>
               {/each}
@@ -163,6 +180,23 @@
     </div>
   {/if}
 </main>
+
+{#if editing?.food}
+  {@const entry = editing}
+  <AmountSheet
+    title="How much?"
+    name={entry.title}
+    food={resolveFood(store.foods, entry.title)}
+    amount={entry.food!.qty}
+    unit={entry.food!.unit ?? ''}
+    action="Save"
+    onsave={async (amount, unit) => {
+      await act(() => planner.setAmount(entry, amount, unit));
+      editing = null;
+    }}
+    onclose={() => (editing = null)}
+  />
+{/if}
 
 <style>
   .who {
@@ -311,6 +345,12 @@
     font-weight: 600;
     color: inherit;
     text-decoration: none;
+  }
+  .amount {
+    min-height: 40px;
+    padding: 0 0.8rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
   .remove {
     width: 40px;

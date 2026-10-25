@@ -124,8 +124,11 @@ fn lists_grow_by_hand_and_by_recipe() {
         .unwrap();
     assert!(store.list(id).unwrap().unwrap().items.is_empty());
 
-    let tp = store.add_item(id, "toilet paper", &db).unwrap().unwrap();
-    let melk = store.add_item(id, "Melk", &db).unwrap().unwrap();
+    let tp = store
+        .add_item(id, "toilet paper", None, &db)
+        .unwrap()
+        .unwrap();
+    let melk = store.add_item(id, "Melk", None, &db).unwrap().unwrap();
     let list = store.list(id).unwrap().unwrap();
     let names: Vec<_> = list
         .items
@@ -259,9 +262,12 @@ fn lists_round_trip_and_tick_off() {
         .unwrap()
         .id;
     assert!(store.set_checked(id, garlic, true).unwrap());
-    let extra = store.add_item(id, "  toilet paper ", &db).unwrap().unwrap();
-    assert!(store.add_item(id, "", &db).is_err());
-    assert!(store.add_item(id + 100, "x", &db).unwrap().is_none());
+    let extra = store
+        .add_item(id, "  toilet paper ", None, &db)
+        .unwrap()
+        .unwrap();
+    assert!(store.add_item(id, "", None, &db).is_err());
+    assert!(store.add_item(id + 100, "x", None, &db).unwrap().is_none());
     assert!(
         !store.set_checked(id + 100, garlic, true).unwrap(),
         "wrong list"
@@ -316,4 +322,31 @@ fn databases_from_before_recipe_names_still_open() {
     // Opening upgrades the table; the add-column must not fail or repeat.
     Store::open(&path).unwrap();
     Store::open(&path).unwrap();
+}
+
+#[test]
+fn plans_from_before_single_foods_still_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("old.sqlite");
+    {
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE);
+             CREATE TABLE plan_entries (
+                id INTEGER PRIMARY KEY, person INTEGER NOT NULL REFERENCES people(id) ON DELETE CASCADE,
+                day TEXT NOT NULL, meal TEXT, meal_order INTEGER NOT NULL, path TEXT NOT NULL,
+                title TEXT NOT NULL, portions REAL NOT NULL CHECK (portions > 0));
+             INSERT INTO people (name) VALUES ('Peter');
+             INSERT INTO plan_entries (person, day, meal, meal_order, path, title, portions)
+             VALUES (1, '2026-10-14', 'dinner', 2, 'Curry.cook', 'Curry', 2);
+             PRAGMA user_version = 4;",
+        )
+        .unwrap();
+    }
+    Store::open(&path).unwrap();
+    let store = Store::open(&path).unwrap();
+    let day = grocery_store::plans::parse_day("2026-10-14").unwrap();
+    let entries = store.plan(1, day, day).unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!((entries[0].portions, &entries[0].food), (2.0, &None));
 }

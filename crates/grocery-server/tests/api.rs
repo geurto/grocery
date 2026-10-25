@@ -1000,3 +1000,160 @@ async fn nutrition_of_one_food() {
         .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn single_foods_in_plans() {
+    let f = with_nevo();
+    let (_, me) = f
+        .json(
+            Method::POST,
+            "/api/people",
+            Some(json!({ "name": "Peter" })),
+        )
+        .await;
+    let me = me["id"].as_i64().unwrap();
+    let food = |name: &str, amount: Value, unit: Value| json!({ "person": me, "day": "2026-10-14", "meal": "snack", "food": name, "amount": amount, "unit": unit });
+
+    let (status, onion) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(food("Ui", json!(1), Value::Null)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{onion}");
+    assert_eq!(
+        (&onion["title"], &onion["path"], &onion["food"]["text"]),
+        (&json!("Ui"), &json!(""), &json!("1"))
+    );
+    let (_, kale) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(food("boerenkool", json!(50), json!("g"))),
+        )
+        .await;
+    assert_eq!(kale["food"]["text"], "50 g");
+    // Kale has no piece weight: kept, but not counted, and said why.
+    let (_, piece) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(food("boerenkool", json!(1), Value::Null)),
+        )
+        .await;
+
+    // Only foods from aliases.yaml; one of recipe or food.
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(food("cashews", json!(25), json!("g"))),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(food("ui", json!(0), Value::Null)),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    let (status, _) = f
+        .json(
+            Method::POST,
+            "/api/plan",
+            Some(json!({ "person": me, "day": "2026-10-14", "recipe": "Kale.cook", "food": "ui" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    let (status, changed) = f
+        .json(
+            Method::PATCH,
+            &format!("/api/plan/{}", kale["id"]),
+            Some(json!({ "amount": 100, "unit": "g" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{changed}");
+    assert_eq!(changed["food"]["qty"], 100.0);
+
+    let (status, n) = f
+        .json(
+            Method::GET,
+            &format!("/api/plan/nutrition?person={me}&from=2026-10-14&to=2026-10-14"),
+            None,
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{n}");
+    let day = &n["days"][0];
+    let entry = |id: &Value| {
+        day["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["id"] == *id)
+            .unwrap()
+            .clone()
+    };
+    // 100 g of onion (one piece) at 25 kcal, 100 g of kale at 30.
+    assert_eq!(entry(&onion["id"])["kcal"], 25.0);
+    assert_eq!(entry(&kale["id"])["kcal"], 30.0);
+    let piece = entry(&piece["id"]);
+    assert!(
+        piece["problem"].as_str().unwrap().contains("piece weight"),
+        "{piece}"
+    );
+    assert_eq!(day["nutrients"]["ENERCC"]["value"], 55.0);
+}
+
+#[tokio::test]
+async fn list_items_can_have_an_amount() {
+    let f = Fixture::new();
+    // From a plan: recipes and single foods together; the same food adds up.
+    let (status, list) = f
+        .json(
+            Method::POST,
+            "/api/lists",
+            Some(json!({
+                "recipes": [{ "path": "Pasta arrabbiata.cook", "servings": 4 }],
+                "items": [{ "name": "spaghetti", "amount": 100, "unit": "g" },
+                          { "name": "melk", "amount": 1, "unit": "l" }]
+            })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED, "{list}");
+    let item = |list: &Value, name: &str| {
+        list["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|i| i["name"] == name)
+            .unwrap_or_else(|| panic!("no {name} in {list}"))
+            .clone()
+    };
+    assert_eq!(item(&list, "spaghetti")["quantity"], "500 g");
+    assert_eq!(item(&list, "melk")["quantity"], "1 l");
+    let id = list["id"].as_i64().unwrap();
+
+    let (status, _) = f
+        .json(
+            Method::POST,
+            &format!("/api/lists/{id}/items"),
+            Some(json!({ "name": "toilet paper", "amount": 2, "unit": "pak" })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::CREATED);
+    let (_, list) = f.json(Method::GET, &format!("/api/lists/{id}"), None).await;
+    assert_eq!(item(&list, "toilet paper")["quantity"], "2 pak");
+
+    let (status, _) = f
+        .json(
+            Method::POST,
+            &format!("/api/lists/{id}/items"),
+            Some(json!({ "name": "kaas", "amount": -1 })),
+        )
+        .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

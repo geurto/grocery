@@ -56,6 +56,17 @@ describe('applyOps', () => {
     const view = applyOps(l, [{ seq: 1, kind: 'add', list: 1, temp: -5, name: 'toilet paper' }]);
     expect(view.items).toHaveLength(3);
   });
+
+  it('shows the amount of an item added with one', () => {
+    const view = applyOps(list(), [
+      { seq: 1, kind: 'add', list: 1, temp: -5, name: 'kaas', amount: 500, unit: 'g' },
+      { seq: 2, kind: 'add', list: 1, temp: -6, name: 'bananen', amount: 2 },
+    ]);
+    expect(view.items.slice(-2).map((i) => [i.name, i.quantity])).toEqual([
+      ['kaas', '500 g'],
+      ['bananen', '2'],
+    ]);
+  });
 });
 
 describe('remap', () => {

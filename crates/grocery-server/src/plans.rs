@@ -23,9 +23,11 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use chrono::NaiveDate;
+use grocery_core::model::{Amount, Ingredient, Recipe};
 use grocery_core::nutrition::{self, Composition, FoodKey, Nutrition, Options, Status};
+use grocery_core::render;
 use grocery_store::plans::parse_day;
-use grocery_store::{EntryChange, Meal, NewEntry, Person, PlanEntry};
+use grocery_store::{EntryChange, FoodAmount, Meal, NewEntry, Person, PlanEntry};
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::api::{blocking, load_recipe, ApiError, ApiResult, Shared};
@@ -115,9 +117,20 @@ pub struct EntryJson {
     person: i64,
     day: String,
     meal: Option<&'static str>,
+    /// Empty for a food.
     path: String,
     title: String,
     portions: f64,
+    /// Only for a single food: how much.
+    food: Option<FoodJson>,
+}
+
+#[derive(Serialize)]
+struct FoodJson {
+    qty: f64,
+    unit: Option<String>,
+    /// "25 g", "1"
+    text: String,
 }
 
 impl From<PlanEntry> for EntryJson {
@@ -130,8 +143,17 @@ impl From<PlanEntry> for EntryJson {
             path: e.path,
             title: e.title,
             portions: e.portions,
+            food: e.food.map(|f| FoodJson {
+                text: render::amount_text(&amount(&f), 1.0).unwrap_or_default(),
+                qty: f.qty,
+                unit: f.unit,
+            }),
         }
     }
+}
+
+fn amount(f: &FoodAmount) -> Amount {
+    Amount::value(f.qty, f.unit.as_deref())
 }
 
 #[derive(Deserialize)]
@@ -177,14 +199,20 @@ fn meal(s: Option<&str>) -> ApiResult<Option<Meal>> {
     .transpose()
 }
 
+/// A recipe, or a single food with an amount.
 #[derive(Deserialize)]
 pub struct AddEntry {
     person: i64,
     day: String,
     meal: Option<String>,
     /// Recipe path, as in `/api/recipes`.
-    recipe: String,
+    recipe: Option<String>,
     portions: Option<f64>,
+    /// A food from `aliases.yaml` (name or synonym), instead of a recipe.
+    food: Option<String>,
+    /// For a food: how much (default 1), in `unit` (default pieces).
+    amount: Option<f64>,
+    unit: Option<String>,
 }
 
 pub async fn add_entry(
@@ -194,19 +222,48 @@ pub async fn add_entry(
     let day = parse_day(&req.day)?;
     let meal = meal(req.meal.as_deref())?;
     blocking(&app, move |app| {
+        let new = match (&req.recipe, &req.food) {
+            (Some(path), None) => {
+                let recipe = app
+                    .store()
+                    .recipe(path)?
+                    .ok_or_else(|| ApiError::not_found(format!("recipe '{path}'")))?;
+                NewEntry {
+                    person: req.person,
+                    day,
+                    meal,
+                    path: recipe.path,
+                    title: recipe.title,
+                    portions: req.portions.unwrap_or(1.0),
+                    food: None,
+                }
+            }
+            (None, Some(name)) => {
+                let name = name.trim();
+                if app.library.food_db()?.resolve(name).is_none() {
+                    return Err(ApiError::bad_request(format!(
+                        "'{name}' isn't in your food list"
+                    )));
+                }
+                NewEntry {
+                    person: req.person,
+                    day,
+                    meal,
+                    path: String::new(),
+                    // As typed, like a list line: "banaan", not the food's key.
+                    title: name.to_owned(),
+                    portions: 1.0,
+                    food: Some(FoodAmount {
+                        qty: req.amount.unwrap_or(1.0),
+                        unit: req.unit.clone(),
+                    }),
+                }
+            }
+            _ => return Err(ApiError::bad_request("give either a recipe or a food")),
+        };
         let store = app.store();
-        let recipe = store
-            .recipe(&req.recipe)?
-            .ok_or_else(|| ApiError::not_found(format!("recipe '{}'", req.recipe)))?;
         let entry = store
-            .add_plan_entry(&NewEntry {
-                person: req.person,
-                day,
-                meal,
-                path: recipe.path,
-                title: recipe.title,
-                portions: req.portions.unwrap_or(1.0),
-            })?
+            .add_plan_entry(&new)?
             .ok_or_else(|| ApiError::not_found(format!("person {}", req.person)))?;
         drop(store);
         app.notify(Event::Plan {
@@ -232,6 +289,9 @@ pub struct UpdateEntry {
     #[serde(default, deserialize_with = "present")]
     meal: Option<Option<String>>,
     portions: Option<f64>,
+    /// Only for a food; `unit` goes with it (missing = pieces).
+    amount: Option<f64>,
+    unit: Option<String>,
 }
 
 pub async fn update_entry(
@@ -243,6 +303,10 @@ pub async fn update_entry(
         day: req.day.as_deref().map(parse_day).transpose()?,
         meal: req.meal.map(|m| meal(m.as_deref())).transpose()?,
         portions: req.portions,
+        amount: req.amount.map(|qty| FoodAmount {
+            qty,
+            unit: req.unit,
+        }),
     };
     blocking(&app, move |app| {
         let entry = app
@@ -340,28 +404,48 @@ pub async fn nutrition(
         let foods = app.library.food_db()?;
         let custom = app.library.custom_foods()?;
 
-        // Each recipe once, however often it's planned.
+        // Each recipe once, however often it's planned; a food is a
+        // one-ingredient recipe of one serving.
         let mut recipes = HashMap::new();
+        let mut singles = HashMap::new();
         for e in &entries {
-            if !recipes.contains_key(&e.path) {
-                recipes.insert(e.path.clone(), load_recipe(app, &e.path).map(|(_, r)| r));
+            match &e.food {
+                Some(f) => {
+                    singles.insert(e.id, food_recipe(&e.title, f));
+                }
+                None if !recipes.contains_key(&e.path) => {
+                    recipes.insert(e.path.clone(), load_recipe(app, &e.path).map(|(_, r)| r));
+                }
+                None => {}
             }
         }
-        let loaded: Vec<_> = recipes.values().filter_map(|r| r.as_ref().ok()).collect();
+        let loaded: Vec<_> = recipes
+            .values()
+            .filter_map(|r| r.as_ref().ok())
+            .chain(singles.values())
+            .collect();
         let table = app.store().composition_table(&loaded, &foods, &custom)?;
+        let compute =
+            |recipe: &Recipe| nutrition::compute(recipe, &foods, &table, Options::default());
         let computed: HashMap<&String, Result<Nutrition, String>> = recipes
             .iter()
             .map(|(path, r)| {
                 let n = match r {
-                    Ok(recipe) => Ok(nutrition::compute(
-                        recipe,
-                        &foods,
-                        &table,
-                        Options::default(),
-                    )),
+                    Ok(recipe) => Ok(compute(recipe)),
                     Err(e) => Err(e.message.clone()),
                 };
                 (path, n)
+            })
+            .collect();
+        let computed_foods: HashMap<i64, Result<Nutrition, String>> = singles
+            .iter()
+            .map(|(id, recipe)| {
+                let n = compute(recipe);
+                let problem = n
+                    .lines
+                    .first()
+                    .and_then(|l| food_problem(&l.status, &l.amount));
+                (*id, problem.map_or(Ok(n), Err))
             })
             .collect();
 
@@ -379,7 +463,11 @@ pub async fn nutrition(
                     coverage: None,
                     problem: None,
                 };
-                match &computed[&e.path] {
+                let n = match e.food {
+                    Some(_) => &computed_foods[&e.id],
+                    None => &computed[&e.path],
+                };
+                match n {
                     Err(problem) => json.problem = Some(problem.clone()),
                     Ok(n) if !n.servings.is_some_and(|s| s > 0.0) => {
                         json.problem = Some("the recipe doesn't say how many it serves".into());
@@ -446,6 +534,48 @@ pub async fn nutrition(
         }))
     })
     .await
+}
+
+/// A food from the plan as a recipe of one serving, so it's counted like
+/// one.
+fn food_recipe(name: &str, f: &FoodAmount) -> Recipe {
+    Recipe {
+        title: name.to_owned(),
+        servings: Some(1.0),
+        ingredients: vec![Ingredient {
+            name: name.to_owned(),
+            amount: amount(f),
+            optional: false,
+            note: None,
+        }],
+        ..Default::default()
+    }
+}
+
+/// Why a planned food isn't counted, in words; `None` when it is (or is
+/// negligible, which counts as nothing on purpose).
+fn food_problem(status: &Status, amount: &Amount) -> Option<String> {
+    Some(match status {
+        Status::Counted { .. } | Status::Negligible => return None,
+        Status::NotInAliases { .. } => "not in your food list (any more)".into(),
+        Status::NoNevoCode { .. } => "the food has no nutrition values yet".into(),
+        Status::NevoNotFound { code, .. } => format!("NEVO code {code} isn't in the data"),
+        Status::CustomNotFound { name, .. } => format!("'{name}' isn't in custom.yaml"),
+        Status::NoWeight { .. } if amount_unit(amount).is_none() => {
+            "a piece has no weight for this food: give it a piece weight, or use grams".into()
+        }
+        Status::NoWeight { unit } => {
+            format!("'{unit}' has no weight for this food: use grams, or add the unit to the food")
+        }
+        Status::Unquantified | Status::Optional => "no amount".into(),
+    })
+}
+
+fn amount_unit(amount: &Amount) -> Option<&str> {
+    match amount {
+        Amount::Value { unit, .. } => unit.as_deref(),
+        _ => None,
+    }
 }
 
 /// "fresh coriander (package)" for each custom food counted.

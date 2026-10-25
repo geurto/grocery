@@ -101,6 +101,19 @@ pub struct Qty {
     pub label: Option<String>,
 }
 
+impl Qty {
+    /// An amount as written ("500 g", "2", "1 blik") in its dimension.
+    pub fn of(qty: f64, unit: Option<&str>) -> Self {
+        let n = units::normalize(qty, unit);
+        let label = matches!(n.dim, Dim::Named(_)).then(|| unit.unwrap_or_default().to_owned());
+        Qty {
+            dim: n.dim,
+            value: n.value,
+            label,
+        }
+    }
+}
+
 #[derive(Default)]
 struct Acc<'a> {
     name: String,
@@ -228,9 +241,8 @@ pub fn build(selections: &[Selection<'_>], db: &FoodDb, pantry: &Pantry) -> Shop
                     }
                 }
                 Amount::Value { qty, unit, .. } => {
-                    let n = units::normalize(qty, unit.as_deref());
-                    let label = matches!(n.dim, Dim::Named(_)).then(|| unit.unwrap_or_default());
-                    acc.add(n.dim, n.value, label);
+                    let q = Qty::of(qty, unit.as_deref());
+                    acc.add(q.dim, q.value, q.label);
                 }
             }
 
@@ -310,7 +322,7 @@ fn scale_factor(
 
 /// Configured aisles first (in walking order), then other aisles
 /// alphabetically, then items without an aisle. Alphabetical within an aisle.
-fn sort_items(items: &mut [Item], aisle_order: &[String]) {
+pub fn sort_items(items: &mut [Item], aisle_order: &[String]) {
     items.sort_by_cached_key(|i| sort_key(i, aisle_order));
 }
 

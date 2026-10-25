@@ -138,6 +138,16 @@ class Planner {
     await this.refreshWeek(person, weekStart(day));
   }
 
+  async addFood(person: number, day: string, meal: Meal | null, food: string, amount: number, unit?: string) {
+    await guard(api.addEntry({ person, day, meal, food, amount, unit: unit || undefined }));
+    await this.refreshWeek(person, weekStart(day));
+  }
+
+  async setAmount(entry: PlanEntry, amount: number, unit?: string) {
+    await guard(api.updateEntry(entry.id, { amount, unit: unit || undefined }));
+    await this.refreshWeek(entry.person, weekStart(entry.day));
+  }
+
   async setPortions(entry: PlanEntry, portions: number) {
     const k = key(entry.person, weekStart(entry.day));
     // Show it right away; the refresh brings the nutrition.

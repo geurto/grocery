@@ -4,7 +4,7 @@
   import Header from '../components/Header.svelte';
   import { api, OfflineError } from '../lib/api';
   import { copyText, shareText, tick, WakeLock, wakeLock } from '../lib/device';
-  import { suggestFoods } from '../lib/foods';
+  import { amountText, parseTyped, suggestFoods } from '../lib/foods';
   import { byAisle, plainText } from '../lib/format';
   import { href, router } from '../lib/router.svelte';
   import { store } from '../lib/store.svelte';
@@ -38,7 +38,10 @@
   const groups = $derived(
     byAisle(hideTicked ? visible.filter((i) => !i.checked) : visible, store.aisles),
   );
-  const suggestions = $derived(suggestFoods(store.foods, newItem));
+  // "500 g kaas": suggest for "kaas", and keep the amount when one is picked.
+  const typed = $derived(parseTyped(newItem));
+  const typedAmount = $derived(typed.amount === undefined ? '' : amountText(typed.amount, typed.unit));
+  const suggestions = $derived(suggestFoods(store.foods, typed.name));
   const allDone = $derived(!!list && list.item_count > 0 && list.checked_count === list.item_count);
 
   $effect(() => {
@@ -93,12 +96,16 @@
 
   function add(e: SubmitEvent) {
     e.preventDefault();
-    addNamed(newItem);
+    if (!newItem.trim()) return;
+    store.addItem(id, newItem);
+    newItem = '';
+    info = null;
   }
 
+  /** Add `name` with whatever amount was typed. */
   function addNamed(name: string) {
     if (!name.trim()) return;
-    store.addItem(id, name);
+    store.addItem(id, typedAmount ? `${typedAmount} ${name}` : name);
     newItem = '';
     info = null;
   }
@@ -249,7 +256,10 @@
     {#if list.items.length === 0}
       <div class="empty">
         <p>This list is empty.</p>
-        <p class="small">Add recipes, or type what you need below: foods you know land in their aisle.</p>
+        <p class="small">
+          Add recipes, or type what you need below, with an amount if you like (“500 g kaas”, “2 bananen”):
+          foods you know land in their aisle.
+        </p>
       </div>
     {/if}
 
@@ -317,7 +327,7 @@
             <span class="name">
               {s.matched}{#if s.matched !== s.food.name}<span class="muted"> ({s.food.name})</span>{/if}
             </span>
-            <span class="small muted">{s.food.aisle ?? 'no aisle'}</span>
+            <span class="small muted">{typedAmount ? `${typedAmount} · ` : ''}{s.food.aisle ?? 'no aisle'}</span>
           </button>
           <button class="info" aria-label="Nutrition of {s.food.name}" onclick={() => (info = s.food.name)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5v.5" /></svg>
@@ -330,7 +340,7 @@
     <input
       class="field"
       bind:value={newItem}
-      placeholder="Add an item…"
+      placeholder="Add an item… (or “500 g kaas”)"
       aria-label="Add an item"
       enterkeyhint="done"
       autocomplete="off"

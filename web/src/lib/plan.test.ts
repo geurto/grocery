@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { plannedRecipes } from './plan';
+import { plannedFoods, plannedRecipes } from './plan';
 import type { PlanEntry } from './types';
 
 let id = 0;
@@ -36,5 +36,31 @@ describe('plannedRecipes', () => {
       ],
       ['Paella', 1, [{ person: 1, portions: 1 }]],
     ]);
+  });
+});
+
+describe('plannedFoods', () => {
+  const food = (person: number, day: string, title: string, qty: number, unit: string | null = null): PlanEntry => ({
+    ...e(person, day, ''),
+    title,
+    food: { qty, unit, text: '' },
+  });
+
+  it('sums single foods per name and unit, apart from recipes', () => {
+    const days = new Set(['2026-10-14', '2026-10-15']);
+    const entries = [
+      food(1, '2026-10-14', 'Banaan', 1),
+      food(2, '2026-10-15', 'banaan', 2),
+      food(1, '2026-10-14', 'cashewnoten', 25, 'g'),
+      food(1, '2026-10-15', 'cashewnoten', 1, 'zak'),
+      food(1, '2026-10-20', 'banaan', 1), // not a chosen day
+      e(1, '2026-10-14', 'Curry.cook'),
+    ];
+    expect(plannedFoods(entries, days)).toEqual([
+      { name: 'Banaan', amount: 3, unit: null },
+      { name: 'cashewnoten', amount: 25, unit: 'g' },
+      { name: 'cashewnoten', amount: 1, unit: 'zak' },
+    ]);
+    expect(plannedRecipes(entries, days).map((r) => r.title)).toEqual(['Curry']);
   });
 });

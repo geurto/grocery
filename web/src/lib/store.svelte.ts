@@ -2,10 +2,10 @@
 // works in a shop without signal), the outbox of changes still to send, and
 // the live connection that tells us when someone else changed something.
 
-import { api, HttpError, OfflineError } from './api';
+import { api, HttpError, OfflineError, type NewItem } from './api';
 import { load, save } from './storage';
 import { applyOps, next, settle, type Op, type Outcome } from './sync';
-import { normalize, resolveFood } from './foods';
+import { normalize, parseTyped, resolveFood } from './foods';
 import type { Food, List, ListStatus, ListSummary, Recipe, RecipeSummary, ServerEvent } from './types';
 
 const RECIPE_CACHE_SIZE = 40;
@@ -201,8 +201,9 @@ class Store {
     this.#enqueue({ seq: ++this.#seq, kind: 'check', list, item, checked });
   }
 
-  addItem(list: number, name: string) {
-    const trimmed = name.trim();
+  /** `text` as typed: "melk", "500 g kaas". */
+  addItem(list: number, text: string) {
+    const { name: trimmed, amount, unit } = parseTyped(text);
     if (!trimmed) return;
     // Negative and unique on this phone until the server assigns a real id.
     const temp = -(Date.now() * 100 + (this.#seq % 100));
@@ -214,6 +215,7 @@ class Store {
       list,
       temp,
       name: trimmed,
+      ...(amount === undefined ? {} : { amount, unit }),
       shown: food ? normalize(trimmed) : undefined,
       aisle: food?.aisle ?? null,
     });
@@ -230,7 +232,7 @@ class Store {
           await api.setChecked(op.list, op.item, op.checked);
           return { ok: true };
         case 'add':
-          return { ok: true, id: (await api.addItem(op.list, op.name)).id };
+          return { ok: true, id: (await api.addItem(op.list, { name: op.name, amount: op.amount, unit: op.unit })).id };
         case 'remove':
           await api.removeItem(op.list, op.item);
           return { ok: true };
@@ -295,8 +297,8 @@ class Store {
     return list;
   }
 
-  async createList(recipes: { path: string; servings?: number }[] = [], title?: string) {
-    const list = await api.createList(recipes, title);
+  async createList(recipes: { path: string; servings?: number }[] = [], title?: string, items: NewItem[] = []) {
+    const list = await api.createList(recipes, title, items);
     this.online = true;
     this.details[list.id] = list;
     save('details', this.details);
