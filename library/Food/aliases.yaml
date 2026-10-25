@@ -62,6 +62,15 @@ foods:
     piece_g: 10
     aisle: groente & fruit
     synonyms: [verse rode peper, groene peper, red chili]
+  groene jalapeño:
+    nevo: 2524          # Peper rood (closest match; NEVO only has jalapeño pickled)
+    piece_g: 15
+    aisle: groente & fruit
+    synonyms: [jalapeño, jalapeno, groene jalapeno, green jalapeño]
+  bimi:
+    nevo: 921           # Broccoli rauw (closest match)
+    aisle: groente & fruit
+    synonyms: [broccolini, tenderstem broccoli]
   rode paprika:
     nevo: 884           # Paprika rode rauw
     piece_g: 160
@@ -121,7 +130,7 @@ foods:
   sperziebonen:
     nevo: 50
     aisle: groente & fruit
-    synonyms: [green beans]
+    synonyms: [green beans, kousenband]
   taugé:
     nevo: 58
     aisle: groente & fruit
@@ -279,7 +288,7 @@ foods:
   basilicum:
     nevo: 2177          # Basilicum vers
     aisle: groente & fruit
-    synonyms: [basil]
+    synonyms: [basil, verse basilicum]
   thaise basilicum:
     nevo: 2177          # Basilicum vers (the AH label values were exactly this)
     aisle: groente & fruit
@@ -613,7 +622,7 @@ foods:
   gedroogde linzen:
     nevo: 5169
     aisle: pasta, rijst & wereldkeuken
-    synonyms: [gedroogde rode linzen, gedroogde groene linzen, gedroogde bruine linzen, dried lentils]
+    synonyms: [rode linzen, gedroogde rode linzen, gedroogde groene linzen, gedroogde bruine linzen, dried lentils]
   volkoren tortilla:
     nevo: 5482
     aisle: pasta, rijst & wereldkeuken
@@ -725,6 +734,11 @@ foods:
     nevo: 2498          # Tomaat gezeefd pak
     aisle: conserven & sauzen
     synonyms: [gezeefde tomaten]
+  tomatensaus:
+    nevo: 1524          # Saus tomaten- kant-en-klaar glas
+    density: 1.05
+    aisle: conserven & sauzen
+    synonyms: [tomato sauce]
   tomatenpuree:
     nevo: 141
     aisle: conserven & sauzen
@@ -772,7 +786,7 @@ foods:
   fond:
     custom: fond 
     aisle: conserven & sauzen
-    synonyms: [bouillon, gevogeltefond, runderfond, groentefond, paddenstoelenfond, vega bouillon, kippenbouillon, runderbouillon, broth]
+    synonyms: [bouillon, groentebouillon, gevogeltefond, runderfond, groentefond, paddenstoelenfond, vega bouillon, kippenbouillon, runderbouillon, broth]
   sherry:
     nevo: 409
     density: 0.98
@@ -828,6 +842,10 @@ foods:
     synonyms: [appelmoes zonder suiker, applesauce, unsweetened applesauce]
 
   ### kruiden & specerijen ###
+  mosterdzaad:
+    aisle: kruiden & specerijen
+    negligible: true    # NEVO has no mustard seed; a few grams of spice
+    synonyms: [mustard seed, mustard seeds]
   komijn:
     nevo: 827           # Komijnzaad gedroogd
     density: 0.45       # ground spice, ~2 g per tl
@@ -1333,7 +1351,7 @@ foods:
   zout:
     nevo: 841           # Zout m toegevoegd jodium
     density: 1.2        # table salt: ~6 g per tl
-    synonyms: [salt]
+    synonyms: [salt, zeezout]
   zwarte peper:
     nevo: 823           # Peper zwarte/witte
     synonyms: [peper, black pepper]
@@ -1377,6 +1395,16 @@ foods:
     density: 1.1
     aisle: conserven & sauzen
     synonyms: [rozenharissa]
+  roti pannenkoeken:
+    nevo: 2312          # Roti v bloem (sada roti)
+    piece_g: 60         # rough: a packet of 4 is ~240 g
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [roti, roti's, rotis, roti pannenkoek]
+  sinaasappelsap:
+    nevo: 410           # Sap sinaasappel- gepasteuriseerd
+    density: 1.04
+    aisle: zuivel & eieren
+    synonyms: [orange juice, jus d'orange]
   kidneybonen:
     nevo: 3184        # Bonen kidney- rode blik/glas
     aisle: conserven & sauzen
