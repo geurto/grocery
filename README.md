@@ -45,6 +45,12 @@ Food/pantry.yaml   staples never put on the list
 Food/custom.yaml   your own nutrition values, for foods NEVO doesn't have
 ```
 
+`Recipes/Uitproberen/` holds recipes you're trying out, tagged `proberen`:
+move one to its proper folder (and drop the tag) if it's a keeper, or delete
+it. In Claude Code, `/import-recipe <url, photo or pasted text>` writes one
+there from a web page or cookbook page, in the library's style and food names,
+and makes a shopping list from it (`.claude/skills/import-recipe/`).
+
 Only `Recipes/` and `Food/` are read; nothing is written there. Back up the
 library and the database (below), which holds your saved lists.
 
