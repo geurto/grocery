@@ -7,7 +7,9 @@ services:
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
-      - ${GROCERY_LIBRARY_DIR:-./library}:/library
+      # The image ships with the library from main. To use a local folder
+      # instead (e.g. to keep edits made in the app), uncomment:
+      # - ${GROCERY_LIBRARY_DIR:-./library}:/library
       - grocery-data:/data
 
 volumes:

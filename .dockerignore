@@ -4,7 +4,5 @@
 target
 web/node_modules
 web/dist
-# Your recipes and food data are mounted at runtime, never baked into the image.
-library
 tests
 *.sqlite*
