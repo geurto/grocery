@@ -30,9 +30,13 @@ ENV GROCERY_LIBRARY=/library \
     GROCERY_DB=/data/grocery.sqlite \
     GROCERY_LISTEN=0.0.0.0:8080 \
     TZ=Europe/Amsterdam
-VOLUME ["/library", "/data"]
+VOLUME ["/data"]
 EXPOSE 8080
 USER grocery
+
+# The library (recipes + food data) is baked in last, so a recipe change only
+# rebuilds this layer. Mount a folder over /library to use your own instead.
+COPY --chown=grocery:grocery library /library
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD curl -fsS http://127.0.0.1:8080/api/status || exit 1

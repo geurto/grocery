@@ -205,9 +205,21 @@ It stops cleanly on SIGTERM.
 
 ### Docker
 
-The image holds only the binary (with the web app embedded). Your recipes
-and the NEVO data are not baked in: the library is a mounted folder and the
-database lives in a volume.
+The image holds the binary (with the web app embedded) and the `library/`
+folder (recipes and food data) as it was on `main`. The NEVO data is not baked
+in: the database lives in a volume. To use a local library folder instead,
+uncomment the `/library` mount in `docker-compose.yml`. Without that mount,
+recipes created or edited in the app's editor live only in the container and
+are lost when it's recreated, so commit new recipes to the repo.
+
+Every push to `main` (code or recipes) runs `.github/workflows/docker.yml`,
+which builds a `linux/amd64` image and pushes it to Docker Hub as
+`<user>/grocery:latest` and `:sha-<commit>`. It needs two repository secrets:
+`DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` (a Docker Hub access token with
+read/write). It can also be started by hand from the Actions tab. To have
+the server pick up new images on its own, run something like
+[Watchtower](https://containrrr.dev/watchtower/) next to it, or a cron job
+doing `docker compose pull && docker compose up -d`.
 
 ```sh
 # set GROCERY_IMAGE in .env to <dockerhub-user>/grocery, then:
@@ -216,8 +228,8 @@ docker compose build && docker compose push
 # or for an arm64 server (e.g. a Pi) as well:
 docker buildx build --platform linux/amd64,linux/arm64 -t <user>/grocery:latest --push .
 
-# on the server: copy docker-compose.yml, .env and your library/ folder
-sudo chown -R 1000:1000 library            # the container runs as uid 1000
+# on the server: copy docker-compose.yml and .env (and your library/ folder
+# if you mount it: sudo chown -R 1000:1000 library, the container runs as uid 1000)
 docker compose up -d
 ```
 
