@@ -155,3 +155,18 @@ a:focus-visible {
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+
+/* Exporting recipes (components/RecipePrint.svelte): only they are printed. */
+@media print {
+  #app:has(> .print-sheet) > :not(.print-sheet) {
+    display: none !important;
+  }
+  :root:has(.print-sheet),
+  :root:has(.print-sheet) body {
+    background: #fff;
+    color: #000;
+  }
+  @page {
+    margin: 16mm 15mm;
+  }
+}

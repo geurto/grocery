@@ -290,6 +290,11 @@ Three tabs: **Lists**, **Recipes** and **Plan**.
   app kept track of who needs what (before schema v6) subtract what the
   recipe says now, so an edit to the recipe since can leave a little behind.
 - **Recipes**: by folder (`Diner/`, `Ontbijt/`), searchable.
+- **Export to PDF**: **Select** on Recipes, tick recipes (or **All** of what
+  the search shows), then **Export N to PDF**. They're laid out one per page
+  (ingredients, method, servings, time, tags) and the browser's print dialog
+  saves them: pick "Save as PDF" (on iOS: Print, then share the preview).
+  Recipes the phone has cached also export offline.
 - **New recipe / Edit**: fields for title, folder, servings, time and tags,
   and the method in Cooklang. Buttons insert `@ingredient{amount%unit}`,
   `~{10%minutes}` and `#cookware{}` from a small form, so you don't type the
