@@ -456,6 +456,9 @@ foods:
     nevo: 1587          # Zalm kweek- rauw (supermarket salmon is farmed)
     aisle: vlees & vis
     synonyms: [zalm, salmon, salmon fillet]
+  tijgergarnalen:
+    aisle: vlees & vis
+    synonyms: [garnalen, rauwe garnalen, gepelde garnalen, tiger prawns, prawns, shrimp]
 
   ### zuivel & eieren ### 
   ei:
@@ -639,6 +642,9 @@ foods:
     nevo: 811           # Pasta volkoren rauw
     aisle: pasta, rijst & wereldkeuken
     synonyms: [volkorenpasta, volkoren spaghetti, whole wheat pasta]
+  verse lasagnevellen:
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [lasagnevellen, verse lasagne, lasagne sheets, fresh lasagne sheets]
   quinoa:
     nevo: 3153          # Quinoa rauw
     aisle: pasta, rijst & wereldkeuken
@@ -741,6 +747,7 @@ foods:
     synonyms: [tomato sauce]
   tomatenpuree:
     nevo: 141
+    density: 1.1        # ~5.5 g per tl
     aisle: conserven & sauzen
     synonyms: [tomato puree]
   tomatenblokjes:
@@ -787,6 +794,14 @@ foods:
     custom: fond 
     aisle: conserven & sauzen
     synonyms: [bouillon, groentebouillon, gevogeltefond, runderfond, groentefond, paddenstoelenfond, vega bouillon, kippenbouillon, runderbouillon, broth]
+  visbouillon:
+    density: 1.0
+    aisle: conserven & sauzen
+    synonyms: [visfond, schelpdierenbouillon, fish stock]
+  witte wijn:
+    density: 0.99
+    aisle: conserven & sauzen
+    synonyms: [droge witte wijn, white wine, dry white wine]
   sherry:
     nevo: 409
     density: 0.98
@@ -867,6 +882,14 @@ foods:
     density: 0.4
     aisle: kruiden & specerijen
     synonyms: [chili flakes]
+  chipotle-chilivlokken:
+    density: 0.4
+    aisle: kruiden & specerijen
+    synonyms: [chipotlevlokken, chipotle vlokken, chipotle flakes]
+  gedroogde habanero:
+    piece_g: 1
+    aisle: kruiden & specerijen
+    synonyms: [gedroogde habanero-chilipeper, habanero, dried habanero]
   chilipoeder:
     nevo: 1221          # Chilipoeder
     density: 0.54       # ~2.7 g per tl
