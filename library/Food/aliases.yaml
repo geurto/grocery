@@ -639,6 +639,7 @@ foods:
     aisle: pasta, rijst & wereldkeuken
     synonyms: [tortilla, tortilla's]
   tortillachips:
+    nevo: 1937          # Chips tortilla naturel
     units: { handje: 25, handjes: 25 }
     aisle: pasta, rijst & wereldkeuken
     synonyms: [nachochips, tortilla chips]
@@ -885,6 +886,7 @@ foods:
     aisle: kruiden & specerijen
     synonyms: [kaneelpoeder, cinnamon powder]
   gemberpoeder:
+    negligible: true    # not in NEVO (only fresh root); a few grams of spice
     density: 0.36       # ~1.8 g per tl
     aisle: kruiden & specerijen
     synonyms: [gemalen gember, ground ginger]
@@ -1141,6 +1143,7 @@ foods:
     aisle: ontbijt & bakproducten
     synonyms: [fresh yeast]
   bakpoeder:
+    negligible: true    # not in NEVO; a few grams per recipe
     density: 0.8        # ~4 g per tl
     aisle: ontbijt & bakproducten
     synonyms: [baking powder]
