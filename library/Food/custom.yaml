@@ -172,3 +172,16 @@ foods:
     fibre: 2.1
     salt: 2.5
     nutrients: { VITA_RAE: 333.3, RIBF: 0.21, VITB6: 0.26, FOL: 28, VITC: 31.9, VITE: 6.1, K: 710, CA: 78.1, P: 63, MG: 47.2, FE: 3.1, ID: 43.5 }
+  kikkererwtenmeel:
+    source: package, Ekoplaza (biologisch)
+    energy_kcal: 369.0
+    protein: 20.8
+    fat: 6.9
+    saturated_fat: 0.8
+    carbohydrate: 49.4
+    sugars: 9.5
+    fibre: 12.2
+    salt: 0.1
+    nutrients:
+      FAMSCIS: 2.19
+      FAPU: 3.49
