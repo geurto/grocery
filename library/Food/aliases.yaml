@@ -1114,6 +1114,7 @@ foods:
     aisle: ontbijt & bakproducten
     synonyms: [rijstmeel, rice flour]
   kikkererwtenmeel:
+    custom: kikkererwtenmeel   # Ekoplaza label, see custom.yaml
     density: 0.45
     aisle: ontbijt & bakproducten
     synonyms: [kikkererwtenbloem, gram flour, chickpea flour, besan]
