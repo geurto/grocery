@@ -61,7 +61,7 @@ foods:
     nevo: 2524
     piece_g: 10
     aisle: groente & fruit
-    synonyms: [verse rode peper, groene peper, red chili]
+    synonyms: [verse rode peper, rode chilipeper, chilipeper, groene peper, red chili]
   groene jalapeño:
     nevo: 2524          # Peper rood (closest match; NEVO only has jalapeño pickled)
     piece_g: 15
@@ -319,6 +319,10 @@ foods:
     negligible: true
     aisle: groente & fruit
     synonyms: [kurkumawortel, fresh turmeric]
+  verse rozemarijn:
+    negligible: true    # a few grams of needles
+    aisle: groente & fruit
+    synonyms: [rozemarijnnaaldjes, fresh rosemary]
   ## fruit
   limoen:
     nevo: 691
@@ -634,6 +638,10 @@ foods:
     nevo: 2359
     aisle: pasta, rijst & wereldkeuken
     synonyms: [tortilla, tortilla's]
+  tortillachips:
+    units: { handje: 25, handjes: 25 }
+    aisle: pasta, rijst & wereldkeuken
+    synonyms: [nachochips, tortilla chips]
   pasta:
     nevo: 4             # Pasta witte rauw (dry)
     aisle: pasta, rijst & wereldkeuken
@@ -876,6 +884,10 @@ foods:
     density: 0.52       # ~2.6 g per tl
     aisle: kruiden & specerijen
     synonyms: [kaneelpoeder, cinnamon powder]
+  gemberpoeder:
+    density: 0.36       # ~1.8 g per tl
+    aisle: kruiden & specerijen
+    synonyms: [gemalen gember, ground ginger]
 
   chilivlokken:
     nevo: 1221          # Chilipoeder (closest match)
@@ -1099,6 +1111,10 @@ foods:
     density: 0.6
     aisle: ontbijt & bakproducten
     synonyms: [rijstmeel, rice flour]
+  kikkererwtenmeel:
+    density: 0.45
+    aisle: ontbijt & bakproducten
+    synonyms: [kikkererwtenbloem, gram flour, chickpea flour, besan]
   amandelmeel:
     nevo: 5579          # Meel amandel-
     density: 0.4
@@ -1124,6 +1140,10 @@ foods:
     nevo: 950           # Gist vers
     aisle: ontbijt & bakproducten
     synonyms: [fresh yeast]
+  bakpoeder:
+    density: 0.8        # ~4 g per tl
+    aisle: ontbijt & bakproducten
+    synonyms: [baking powder]
   pure chocolade:
     nevo: 432           # Chocolade puur
     aisle: ontbijt & bakproducten
